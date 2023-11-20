@@ -22,11 +22,12 @@ class SXSTToCIM:
         self.input_file = input_file
         self.out_dir = None
         self.file_name = None
+        self.cyme_json = {}
+        self.sxst_dict = {}
         self.main_method()
 
     def main_method(self):
         self.sxst_dict = self.convert_sxst_to_dict(self.input_file)
-        self.cyme_json = {}
         self.make_cyme_json()
         self.convert_sxst_to_dss()
         self.convert_dss_to_cim()
