@@ -74,7 +74,7 @@ class SXSTToCIM:
         os.mkdir(self.out_dir)
 
         # Other model-specific parameters
-        search_keys = ["OwnerID", "PrimaryVoltage", "Points", "LoadModelInformation"]
+        search_keys = ["OwnerID", "PrimaryVoltage", "Connectors", "LoadModelInformation"]
         [owner_ids, prim_voltages, points, load_model] = self.search_sxst_by_key(search_keys, self.sxst_dict,
                                                                              [[]] * len(search_keys))
         # Convert relevant parameters to floats
@@ -85,10 +85,13 @@ class SXSTToCIM:
             prim_voltages[i] = float(prim_voltages[i])
         # X and Y coordinates
         for pt in points:
-            point = pt["Point"]
-            for point_dict in point:
-                xcoord.append(float(point_dict["X"]))
-                ycoord.append(float(point_dict["Y"]))
+            if isinstance(pt["Point"], list):
+                for each_point in pt["Point"]:
+                    xcoord.append(float(each_point["X"]))
+                    ycoord.append(float(each_point["Y"]))
+            else:
+                xcoord.append(float(pt["Point"]["X"]))
+                ycoord.append(float(pt["Point"]["Y"]))
         # Load model
         lm = float(load_model[0]["ID"])
 
