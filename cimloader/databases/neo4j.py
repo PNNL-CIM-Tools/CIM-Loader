@@ -1,10 +1,6 @@
 from __future__ import annotations
-import math
-import importlib
 import logging
-import re
-import rdflib
-
+import subprocess
 
 from typing import Dict, List, Optional
 
@@ -13,7 +9,6 @@ from neo4j import GraphDatabase
 from neo4j.exceptions import DriverError, Neo4jError
 
 from cimloader.databases import ConnectionInterface, ConnectionParameters, Parameter, QueryResponse
-# from cimgraph.databases.neo4j import Neo4JConnection
 
 import rdflib
 # from rdflib import Graph, Namespace
@@ -21,7 +16,7 @@ from rdflib.namespace import RDF
 
 _log = logging.getLogger(__name__)
 
-class Neo4jUploader(ConnectionInterface):
+class Neo4jConnection(ConnectionInterface):
     def __init__(self, connection_parameters):
         self.connection_parameters = connection_parameters
         self.cim_profile = connection_parameters.cim_profile
@@ -30,6 +25,7 @@ class Neo4jUploader(ConnectionInterface):
         self.username = connection_parameters.username
         self.password = connection_parameters.password
         self.database = connection_parameters.database
+        self.container = connection_parameters.container
         self.driver = None
 
     def connect(self):
@@ -53,8 +49,9 @@ class Neo4jUploader(ConnectionInterface):
 
     def configure(self):
         if self.cim_profile is not None and self.namespace is not None:
+            # self.execute("CALL n10s.nsprefixes.add(\""+self.cim_profile+"\",\""+self.namespace+"\");")
             self.execute("CREATE CONSTRAINT n10s_unique_uri FOR (r:Resource) REQUIRE r.uri IS UNIQUE;")
-            self.execute("CALL n10s.nsprefixes.add(\""+self.cim_profile+"\",\""+self.namespace+"\");")
+
         else:
             _log.exception("CIM profile and namespace must be defined in ConnectionParameters")
 
@@ -65,18 +62,8 @@ class Neo4jUploader(ConnectionInterface):
             handleRDFTypes: "LABELS"})"""
         self.execute(graph_config)
 
-    def upload(self, url:str=None, filepath:str=None, filename:str=None, format:str=None):
-        if url is not None:
-            records=self.execute(f"""call n10s.rdf.import.fetch( {url}, "{format}"); """) 
-        elif filepath is not None and filename is not None:
-            records=self.execute(f"""call n10s.rdf.import.fetch( "file://{filepath}/{filename}", "{format}"); """) 
-        return records
+    
 
-
-    def upload_from_rdflib(self, rdflib_graph):
-
-        pass
-
-    def upload_from_cimgraph(self):
-        pass
-
+    def drop_all(self):
+        self.execute("MATCH (n) DETACH DELETE n")
+        self.execute("DROP CONSTRAINT n10s_unique_uri")

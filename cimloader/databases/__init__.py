@@ -14,13 +14,17 @@ class Parameter:
 @dataclass
 class ConnectionParameters:
     url: str = field(default_factory=str)
+    host: str = field(default_factory=str)
+    port: str = field(default_factory=str)
+    filename: str = field(default_factory=str)
     username: str = field(default_factory=str)
     password: str = field(default_factory=str)
     database: str = field(default_factory=str)
+    container: str = field(default_factory=str)
     namespace: str = field(default="<http://iec.ch/TC57/CIM100#>")
     cim_profile: str = field(default_factory=str)
-    # parameters: List[Parameter] = field(default_factory=list)
-
+    iec61970_301: int = field(default=7)
+    
 
 @dataclass
 class QueryResponse:
@@ -37,11 +41,9 @@ class ConnectionInterface:
     def disconnect(self):
         raise RuntimeError("Must have implemented disconnect in inherited class")
 
-    def load_attributes(self, obj: object):
-        raise RuntimeError("Must have implemented load_attributes in inherited class")
-
-    def create_default_instances(self, feeder_mrid: str | Feeder, mrid_list: List[str]):
-        raise RuntimeError("Must have implemented retrieve_instance from inherited class")
-
     def execute(self, query: str) -> QueryResponse:
         raise RuntimeError("Must have implemented query in the inherited class")
+
+from cimloader.databases.blazegraph import BlazegraphConnection
+from cimloader.databases.neo4j import Neo4jConnection
+from cimloader.databases.mysql import MySQLConnection
