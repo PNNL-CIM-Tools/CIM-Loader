@@ -18,11 +18,12 @@ from converters import Cyme2DSS
 from cimloader.converters import dss_to_cim
 
 class SXSTToCIM:
-    def __init__(self, input_file):
+    def __init__(self, input_file, split_feeders=False):
         self.input_file = input_file
-        self.out_dir = None
-        self.file_name = None
-        self.cyme_json = {}
+        self.out_dir = []
+        self.file_name = []
+        self.split_feeders = split_feeders
+        self.cyme_json = []
         self.sxst_dict = {}
         self.main_method()
 
@@ -68,21 +69,18 @@ class SXSTToCIM:
         for each in file_path_list:
             default_dir = default_dir + each + "/"
 
-        # Make output directory. If already exists, delete first
-        self.out_dir = os.path.join(default_dir, f"{self.file_name}_dss")
-        shutil.rmtree(self.out_dir, True)
-        os.mkdir(self.out_dir)
-
         # Other model-specific parameters
-        search_keys = ["OwnerID", "PrimaryVoltage", "Connectors", "LoadModelInformation"]
-        [owner_ids, prim_voltages, points, load_model] = self.search_sxst_by_key(search_keys, self.sxst_dict,
+        search_keys = ["OwnerID", "PrimaryVoltage", "SecondaryVoltage", "TertiaryVoltage", "Connectors", "LoadModelInformation"]
+        [owner_ids, prim_voltages, sec_voltages, ter_voltages, points, load_model] = self.search_sxst_by_key(search_keys, self.sxst_dict,
                                                                              [[]] * len(search_keys))
         # Convert relevant parameters to floats
         xcoord = []
         ycoord = []
-        # Primary voltages
-        for i in range(len(prim_voltages)):
-            prim_voltages[i] = float(prim_voltages[i])
+        # Voltages
+        voltages = prim_voltages + sec_voltages + ter_voltages
+        voltages = list(set(voltages))
+        for i in range(len(voltages)):
+            voltages[i] = float(voltages[i])
         # X and Y coordinates
         for pt in points:
             if isinstance(pt["Point"], list):
@@ -93,59 +91,103 @@ class SXSTToCIM:
                 xcoord.append(float(pt["Point"]["X"]))
                 ycoord.append(float(pt["Point"]["Y"]))
         # Load model
+        if isinstance(load_model[0], list):
+            load_model = load_model[0]
         lm = float(load_model[0]["ID"])
 
         # Default base voltage
-        if 12.47 in prim_voltages:
+        if 12.47 in voltages:
             base_voltage = 12.47
-        elif 13.2 in prim_voltages:
+        elif 13.2 in voltages:
             base_voltage = 13.2
-        elif 4.16 in prim_voltages:
+        elif 4.16 in voltages:
             base_voltage = 4.16
-        elif 7.2 in prim_voltages:
+        elif 7.2 in voltages:
             base_voltage = 7.2
         else:
             base_voltage = float(min(prim_voltages))
-
-        self.cyme_json = {
-                      "DefaultDir": default_dir,
-                      "OutDir": self.out_dir,
-                      "xmlfilename": self.file_name,
-                      "RootName": self.file_name,
-                      "SubName": f"{self.file_name}_sub",
-                      "LoadScale": 1.0,
-                      "LoadModel": lm,
-                      "DefaultBaseVoltage": base_voltage,
-                      "BaseVoltages": prim_voltages,
-                      "CoordXmin": math.floor(min(xcoord)),
-                      "CoordXmax": math.ceil(max(xcoord)),
-                      "CoordYmin": math.floor(min(ycoord)),
-                      "CoordYmax": math.ceil(max(ycoord)),
-                      "CYMESectionUnit": "m",
-                      "CYMELineCodeUnit": "km",
-                      "DSSSectionUnit": "m",
-                      "OwnerIDs": owner_ids
-                    }
-        with open(f'{default_dir}/{self.file_name}_config.json', 'w') as fp:
-            json.dump(self.cyme_json, fp)
+        if self.split_feeders:
+            for owner_id in owner_ids:
+                # Make output directory. If already exists, delete first
+                out_dir = os.path.join(default_dir, f"{self.file_name}_{owner_id}_dss")
+                shutil.rmtree(out_dir, True)
+                os.mkdir(out_dir)
+                cyme_json = {
+                    "DefaultDir": default_dir,
+                    "OutDir": out_dir,
+                    "xmlfilename": f"{self.file_name}",
+                    "RootName": f"{self.file_name}_{owner_id}",
+                    "SubName": f"{self.file_name}_{owner_id}_sub",
+                    "LoadScale": 1.0,
+                    "LoadModel": lm,
+                    "DefaultBaseVoltage": base_voltage,
+                    "BaseVoltages": voltages,
+                    "CoordXmin": math.floor(min(xcoord)),
+                    "CoordXmax": math.ceil(max(xcoord)),
+                    "CoordYmin": math.floor(min(ycoord)),
+                    "CoordYmax": math.ceil(max(ycoord)),
+                    "CYMESectionUnit": "m",
+                    "CYMELineCodeUnit": "km",
+                    "DSSSectionUnit": "m",
+                    "OwnerIDs": [owner_id]
+                }
+                self.cyme_json.append(cyme_json)
+                self.out_dir.append(out_dir)
+                with open(f'{default_dir}/{self.file_name}_{owner_id}_config.json', 'w') as fp:
+                    json.dump(cyme_json, fp)
+        else:
+            # Make output directory. If already exists, delete first
+            out_dir = os.path.join(default_dir, f"{self.file_name}_dss")
+            shutil.rmtree(out_dir, True)
+            os.mkdir(out_dir)
+            self.cyme_json.append({
+                          "DefaultDir": default_dir,
+                          "OutDir": out_dir,
+                          "xmlfilename": self.file_name,
+                          "RootName": self.file_name,
+                          "SubName": f"{self.file_name}_sub",
+                          "LoadScale": 1.0,
+                          "LoadModel": lm,
+                          "DefaultBaseVoltage": base_voltage,
+                          "BaseVoltages": voltages,
+                          "CoordXmin": math.floor(min(xcoord)),
+                          "CoordXmax": math.ceil(max(xcoord)),
+                          "CoordYmin": math.floor(min(ycoord)),
+                          "CoordYmax": math.ceil(max(ycoord)),
+                          "CYMESectionUnit": "m",
+                          "CYMELineCodeUnit": "km",
+                          "DSSSectionUnit": "m",
+                          "OwnerIDs": owner_ids
+                        })
+            self.out_dir.append(out_dir)
+            with open(f'{default_dir}/{self.file_name}_config.json', 'w') as fp:
+                json.dump(self.cyme_json[0], fp)
 
     def convert_sxst_to_dss(self):
-        Cyme2DSS.ConvertSXST(self.cyme_json)
+        for cyme_json in self.cyme_json:
+            Cyme2DSS.ConvertSXST(cyme_json)
 
     def convert_dss_to_cim(self):
         # Rename master dss file to Master.dss
         # os.rename(f'{self.out_dir}/{self.file_name}_master.dss', f'{self.out_dir}/Master.dss')
         dss_converter = dss_to_cim.DSStoCIM()
-        dss_converter.convert_file(file_path=f'{self.out_dir}', master_file=f'{self.file_name}_master.dss')
+        for directory in self.out_dir:
+            dss_converter.convert_file(
+                file_path=f'{directory}',
+                master_file=f'{self.cyme_json[self.out_dir.index(directory)]["RootName"]}_master.dss'
+            )
 
 
 def usage():
-    print("usage: python cyme_sxst_to_cim.py <full path to sxst file>")
+    print("usage: python cyme_sxst_to_cim.py <full path to sxst file> split_feeders[Optional Boolean]")
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2:
         usage()
         sys.exit()
-    SXSTToCIM(sys.argv[1])
+    if sys.argv == 2:
+        SXSTToCIM(sys.argv[1])
+    elif sys.argv == 3:
+        SXSTToCIM(sys.argv[1], split_feeders=sys.argv[2])
 
