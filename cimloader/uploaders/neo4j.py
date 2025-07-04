@@ -1,19 +1,37 @@
 import logging
 import subprocess
 
+from cimgraph.databases import get_cim_profile, get_database, get_iec61970_301, get_namespace, get_password, get_url, get_username
+
 from cimloader.databases import ConnectionInterface, QueryResponse
 from cimloader.databases.neo4j import Neo4jConnection
-from SPARQLWrapper import JSON, POST, SPARQLWrapper
+
 
 _log = logging.getLogger(__name__)
 
-class Neo4jUploader(ConnectionInterface):
-    def __init__(self, connection_params: ConnectionInterface) -> None:
-        self.url = connection_params.url
-        self.connection_params = connection_params
-        self.container = connection_params.container
-        self.connection = Neo4jConnection(connection_params)
-        self.connection.connect()
+class Neo4jUploader(Neo4jConnection):
+    def __init__(self, containerized:bool = True) -> None:
+
+        # clear cached env variables
+        get_url.cache_clear()
+        get_namespace.cache_clear()
+        get_cim_profile.cache_clear()
+        get_iec61970_301.cache_clear()
+        get_username.cache_clear()
+        get_password.cache_clear()
+
+        # retrieve env variables
+        self.cim_profile, self.cim = get_cim_profile()
+        self.namespace = get_namespace()
+        self.url = get_url()
+        self.username = get_username()
+        self.password = get_password()
+        self.database = get_database()
+        self.iec61970_301 = get_iec61970_301()
+        self.driver = None
+        self.containerized = containerized
+        self.driver = None
+        self.connect()
 
 
     def upload_from_file(self, filename, filepath):
@@ -23,11 +41,11 @@ class Neo4jUploader(ConnectionInterface):
             #TODO
             pass
 
-        if self.container:
-            subprocess.call(["docker", "cp", f"{filepath}/{filename}", f"{self.container}:/var/lib/neo4j/import/{filename}"])
-            records=self.connection.execute(f"""call n10s.rdf.import.fetch( "file:///var/lib/neo4j/import//{filename}", "{format}"); """) 
+        if self.containerized:
+            subprocess.call(["docker", "cp", f"{filepath}/{filename}", f"{self.containerized}:/var/lib/neo4j/import/{filename}"])
+            records=self.execute(f"""call n10s.rdf.import.fetch( "file:///var/lib/neo4j/import//{filename}", "{format}"); """) 
         else:
-            records=self.connection.execute(f"""call n10s.rdf.import.fetch( "file://{filepath}/{filename}", "{format}"); """) 
+            records=self.execute(f"""call n10s.rdf.import.fetch( "file://{filepath}/{filename}", "{format}"); """) 
         return records
 
     def upload_from_url(self, url):
@@ -35,7 +53,7 @@ class Neo4jUploader(ConnectionInterface):
             format = 'RDF/XML'
         elif '.ttl' in url:
             pass
-        records=self.connection.execute(f'''call n10s.rdf.import.fetch("{url}", "{format}"); ''') 
+        records=self.execute(f'''call n10s.rdf.import.fetch("{url}", "{format}"); ''') 
         return records
 
     def upload_from_rdflib(self, rdflib_graph):
