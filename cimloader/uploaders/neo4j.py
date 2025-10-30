@@ -10,7 +10,7 @@ from cimloader.databases.neo4j import Neo4jConnection
 _log = logging.getLogger(__name__)
 
 class Neo4jUploader(Neo4jConnection):
-    def __init__(self, containerized:bool = True) -> None:
+    def __init__(self, container:str = None) -> None:
 
         # clear cached env variables
         get_url.cache_clear()
@@ -29,7 +29,7 @@ class Neo4jUploader(Neo4jConnection):
         self.database = get_database()
         self.iec61970_301 = get_iec61970_301()
         self.driver = None
-        self.containerized = containerized
+        self.container = container
         self.driver = None
         self.connect()
 
@@ -41,8 +41,8 @@ class Neo4jUploader(Neo4jConnection):
             #TODO
             pass
 
-        if self.containerized:
-            subprocess.call(["docker", "cp", f"{filepath}/{filename}", f"{self.containerized}:/var/lib/neo4j/import/{filename}"])
+        if self.container:
+            subprocess.call(["docker", "cp", f"{filepath}/{filename}", f"{self.container}:/var/lib/neo4j/import/{filename}"])
             records=self.execute(f"""call n10s.rdf.import.fetch( "file:///var/lib/neo4j/import//{filename}", "{format}"); """) 
         else:
             records=self.execute(f"""call n10s.rdf.import.fetch( "file://{filepath}/{filename}", "{format}"); """) 
