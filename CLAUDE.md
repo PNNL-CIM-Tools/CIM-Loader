@@ -22,13 +22,19 @@ pip install cim-loader
 ```
 
 ### Environment Setup
-This project uses Poetry for dependency management:
+This project uses uv for fast dependency management:
 ```bash
-poetry install
-poetry shell
+# Install uv if you don't have it
+pip install uv
+
+# Install dependencies
+uv pip install -e .
+
+# Install with dev dependencies
+uv pip install -e ".[dev]"
 ```
 
-Python version: >=3.10,<4.0
+Python version: >=3.10
 
 ### Running Tests
 Tests are Jupyter notebooks in the `tests/` directory:
