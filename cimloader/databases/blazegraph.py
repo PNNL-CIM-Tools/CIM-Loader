@@ -2,19 +2,17 @@ import logging
 
 from cimgraph.databases import get_cim_profile, get_iec61970_301, get_namespace, get_url
 from cimloader.databases import ConnectionInterface, QueryResponse
+from cimloader.databases._config_utils import clear_cim_config_cache
 from SPARQLWrapper import JSON, POST, SPARQLWrapper
 
 _log = logging.getLogger(__name__)
 
 class BlazegraphConnection(ConnectionInterface):
     def __init__(self) -> None:
-        # clear cached env variables
-        get_url.cache_clear()
-        get_namespace.cache_clear()
-        get_cim_profile.cache_clear()
-        get_iec61970_301.cache_clear()
+        # Clear cached env variables to pick up any configuration changes
+        clear_cim_config_cache()
 
-        # retrieve env variables
+        # Retrieve configuration from environment
         self.sparql_obj = None
         self.url = get_url()
         self.namespace = get_namespace()
