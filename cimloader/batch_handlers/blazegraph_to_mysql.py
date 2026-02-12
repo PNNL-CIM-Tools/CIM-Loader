@@ -1,7 +1,7 @@
 
 # from cimloader.databases.blazegraph import Blazegraph
 from cimloader.databases.mysql import MySQLConnection
-from cimloader.databases import ConnectionInterface, ConnectionParameters, Parameter, QueryResponse
+from cimloader.databases import ConnectionInterface, Parameter, QueryResponse
 
 import os
 import logging

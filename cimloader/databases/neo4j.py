@@ -1,32 +1,30 @@
 from __future__ import annotations
 import logging
-import subprocess
-
-from typing import Dict, List, Optional
-
 
 from neo4j import GraphDatabase
 from neo4j.exceptions import DriverError, Neo4jError
 
-from cimloader.databases import ConnectionInterface, ConnectionParameters, Parameter, QueryResponse
-
-import rdflib
-# from rdflib import Graph, Namespace
-from rdflib.namespace import RDF
+from cimloader.databases import ConnectionInterface, QueryResponse
+from cimloader.databases._config_utils import clear_cim_config_cache
+from cimgraph.databases import get_cim_profile, get_database, get_iec61970_301, get_namespace, get_password, get_url, get_username
 
 _log = logging.getLogger(__name__)
 
 class Neo4jConnection(ConnectionInterface):
-    def __init__(self, connection_parameters):
-        self.connection_parameters = connection_parameters
-        self.cim_profile = connection_parameters.cim_profile
-        self.namespace = connection_parameters.namespace
-        self.url = connection_parameters.url
-        self.username = connection_parameters.username
-        self.password = connection_parameters.password
-        self.database = connection_parameters.database
-        self.container = connection_parameters.container
+    def __init__(self):
+        # Clear cached env variables to pick up any configuration changes
+        clear_cim_config_cache()
+
+        # Retrieve configuration from environment
+        self.cim_profile, self.cim = get_cim_profile()
+        self.namespace = get_namespace()
+        self.url = get_url()
+        self.username = get_username()
+        self.password = get_password()
+        self.database = get_database()
+        self.iec61970_301 = get_iec61970_301()
         self.driver = None
+
 
     def connect(self):
         if not self.driver:
@@ -53,7 +51,7 @@ class Neo4jConnection(ConnectionInterface):
             self.execute("CREATE CONSTRAINT n10s_unique_uri FOR (r:Resource) REQUIRE r.uri IS UNIQUE;")
 
         else:
-            _log.exception("CIM profile and namespace must be defined in ConnectionParameters")
+            _log.exception("CIM profile and namespace must be defined in environment variables")
 
         graph_config = """call n10s.graphconfig.init({
             handleMultival: "OVERWRITE", 
