@@ -58,6 +58,7 @@ docker-compose up -d
 # - Neo4j: http://localhost:7474 (bolt://localhost:7687)
 # - GraphDB: http://localhost:7200
 # - MySQL: localhost:3306
+# - Oxigraph: http://localhost:7878
 ```
 
 ## Architecture
@@ -103,6 +104,13 @@ This allows configuration via environment variables or programmatic override.
 - Upload uses `curl` subprocess calls
 - Connection URL format: `http://localhost:8889/bigdata/namespace/kb/sparql`
 
+**Oxigraph**: Lightweight RDF triplestore with SPARQL 1.1
+- Supports RDF/XML, Turtle, N-Triples, N-Quads formats
+- REST API for uploads via HTTP POST to `/store` endpoint
+- Query endpoint: `http://localhost:7878/query`
+- Faster and more lightweight than Blazegraph
+- Docker container support with optional file copying
+
 **Neo4j**: Graph database with n10s RDF plugin
 - Requires n10s configuration: `configure()` must be called before first upload
 - Uses `n10s.rdf.import.fetch()` for RDF imports
@@ -120,16 +128,32 @@ This allows configuration via environment variables or programmatic override.
 from cimloader.uploaders import BlazegraphUploader
 
 loader = BlazegraphUploader()  # Uses env vars from cim-graph
-loader.upload_from_xml(filename='model.xml')
+loader.upload_from_file(filepath='./models', filename='model.xml')
 ```
 
 ### Upload CIM file to Neo4j
 ```python
 from cimloader.uploaders import Neo4jUploader
 
-loader = Neo4jUploader(container='neo4j')  # Optional: container name for docker cp
-loader.upload_from_file(filename='model.xml', filepath='./models')
+# Optional: container name for docker cp (e.g., 'neo4j_cim_loader')
+loader = Neo4jUploader(container='neo4j_cim_loader')
+loader.upload_from_file(filepath='./models', filename='model.xml')
 ```
+
+### Upload CIM file to Oxigraph
+```python
+from cimloader.uploaders import OxigraphUploader
+
+# Direct upload (Oxigraph accessible from host)
+loader = OxigraphUploader()
+loader.upload_from_file(filepath='./models', filename='model.xml')
+
+# Upload via Docker container
+loader = OxigraphUploader(container='oxigraph_cim_loader')
+loader.upload_from_file(filepath='./models', filename='model.xml')
+```
+
+**Note:** All uploaders now use the consistent API signature: `upload_from_file(filepath, filename)`
 
 ### Query a database
 ```python

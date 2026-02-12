@@ -1,7 +1,7 @@
 from cimloader.web_apis.naerm_api import NAERM
 from cimloader.databases.neo4j import Neo4jConnection
 from cimloader.converters.dss_to_cim import DSStoCIM
-from cimloader.databases import ConnectionInterface, ConnectionParameters, Parameter, QueryResponse
+from cimloader.databases import ConnectionInterface, Parameter, QueryResponse
 
 import os
 import logging
@@ -11,10 +11,9 @@ import subprocess
 _log = logging.getLogger(__name__)
 
 class NAERMtoNeo4j():
-    def __init__(self, naerm_params:ConnectionInterface, neo4j_params:ConnectionInterface, 
-                 tmp_dir:str, docker_container:str):
-        self.NaermDownloader = NAERM(naerm_params)
-        # self.Neo4jConnection= Neo4jConnection(neo4j_params)
+    def __init__(self, naerm_url: str, tmp_dir: str, docker_container: str):
+        self.NaermDownloader = NAERM(naerm_url)
+        # self.Neo4jConnection= Neo4jConnection()
         self.dss_converter = DSStoCIM()
         self.tmp_dir = tmp_dir
         self.docker_container = docker_container
@@ -47,11 +46,17 @@ class NAERMtoNeo4j():
 
 
 def _main():
-    
-    neo4j_params = ConnectionParameters(url = "neo4j://localhost:7687", database="neo4j", username="neo4j", password="neo4j",
-                                         cim_profile='cimhub_2023', namespace="http://iec.ch/TC57/CIM100#") 
-    
-    naerm_params = ConnectionParameters(url = "https://api.develop.naerm.team/data/bes/case_files")
+    import os
+
+    # Configure Neo4j via environment variables
+    os.environ['CIMG_URL'] = 'neo4j://localhost:7687'
+    os.environ['CIMG_DATABASE'] = 'neo4j'
+    os.environ['CIMG_USERNAME'] = 'neo4j'
+    os.environ['CIMG_PASSWORD'] = 'neo4j'
+    os.environ['CIMG_CIM_PROFILE'] = 'cimhub_2023'
+    os.environ['CIMG_NAMESPACE'] = 'http://iec.ch/TC57/CIM100#'
+
+    naerm_url = "https://api.develop.naerm.team/data/bes/case_files"
 
     tmp_dir = "/home/ande188/naerm"
 
@@ -65,7 +70,7 @@ def _main():
 
     docker_container = "gridappsd-docker-neo4j-apoc_1"
 
-    nn4j = NAERMtoNeo4j(naerm_params=naerm_params, neo4j_params=neo4j_params, tmp_dir=tmp_dir, docker_container=docker_container)
+    nn4j = NAERMtoNeo4j(naerm_url=naerm_url, tmp_dir=tmp_dir, docker_container=docker_container)
 
     nn4j.upload_all_dss(limit=10)
 

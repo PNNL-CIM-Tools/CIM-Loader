@@ -4,24 +4,31 @@ services:
 
   blazegraph:
     image: gridappsd/blazegraph:develop
-    # image: gridappsd/blazegraph:seto4
-    container_name: blazegraph
+    container_name: blazegraph_cim_loader
     ports:
       - 8889:8080
 
   neo4j-apoc:
-    image: neo4j:5.22-community
+    image: neo4j:5.26-community
+    container_name: neo4j_cim_loader
     ports:
       - 7474:7474
       - 7687:7687
     environment:
-      - NEO4J_PLUGINS= ["apoc", "n10s"]
+      # Install APOC and neosemantics (n10s) plugins
+      - NEO4J_PLUGINS=["apoc","n10s"]
       - NEO4J_AUTH=none
       - NEO4J_dbms_memory_transaction_total_max=10g
       - NEO4J_server_memory_heap_max__size=10g
+      # APOC configuration
       - NEO4J_apoc_export_file_enabled=true
       - NEO4J_apoc_import_file_enabled=true
       - NEO4J_apoc_import_file_use__neo4j__config=true
+      # n10s configuration
+      - NEO4J_dbms_unmanaged__extension__classes=n10s.endpoint=/rdf
+      # Security settings to allow procedures
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*,n10s.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*,n10s.*
     volumes:
       - ./docker/neo4j/data:/data
       - ./docker/neo4j/plugins:/plugins
@@ -29,6 +36,7 @@ services:
 
   graphdb:
     image: ontotext/graphdb:10.7.3
+    container_name: graphdb_cim_loader
     ports:
       - 7200:7200
     volumes:
@@ -36,7 +44,7 @@ services:
 
   mysql:
     image: mysql:8.1.0
-    container_name: mysql_json
+    container_name: mysql_json_cim_loader
     ports:
       - 3306:3306
     environment:
@@ -44,3 +52,12 @@ services:
       MYSQL_PORT: 3306
     volumes:
       - ./docker/mysql:/var/lib/mysql
+
+  oxigraph:
+    image: ghcr.io/oxigraph/oxigraph:latest
+    container_name: oxigraph_cim_loader
+    ports:
+      - 7878:7878
+    volumes:
+      - ./docker/oxigraph:/data
+    command: serve --location /data --bind 0.0.0.0:7878

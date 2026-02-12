@@ -51,7 +51,7 @@ class Neo4jConnection(ConnectionInterface):
             self.execute("CREATE CONSTRAINT n10s_unique_uri FOR (r:Resource) REQUIRE r.uri IS UNIQUE;")
 
         else:
-            _log.exception("CIM profile and namespace must be defined in ConnectionParameters")
+            _log.exception("CIM profile and namespace must be defined in environment variables")
 
         graph_config = """call n10s.graphconfig.init({
             handleMultival: "OVERWRITE", 

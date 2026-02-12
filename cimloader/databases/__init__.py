@@ -32,3 +32,4 @@ class ConnectionInterface:
 from cimloader.databases.blazegraph import BlazegraphConnection
 from cimloader.databases.neo4j import Neo4jConnection
 from cimloader.databases.mysql import MySQLConnection
+from cimloader.databases.oxigraph import OxigraphConnection
