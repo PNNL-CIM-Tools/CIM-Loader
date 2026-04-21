@@ -6,6 +6,8 @@ It provides a REST API for data upload and SPARQL query execution.
 
 import logging
 
+import requests
+
 from cimgraph.databases import get_cim_profile, get_iec61970_301, get_namespace, get_url
 from cimloader.databases import ConnectionInterface, QueryResponse
 from cimloader.databases._config_utils import clear_cim_config_cache
@@ -35,6 +37,13 @@ class OxigraphConnection(ConnectionInterface):
         self.namespace = get_namespace()
         self.iec61970_301 = get_iec61970_301()
         self.cim_profile, self.cim = get_cim_profile()
+
+        # Oxigraph exposes read-only SPARQL at /query and updates at /update.
+        # Derive the update endpoint from the configured query URL.
+        if self.url.endswith('/query'):
+            self.update_endpoint = self.url.rsplit('/query', 1)[0] + '/update'
+        else:
+            self.update_endpoint = self.url.rstrip('/') + '/update'
 
     def connect(self):
         """Establish SPARQL connection to Oxigraph.
@@ -90,10 +99,12 @@ class OxigraphConnection(ConnectionInterface):
             query_message: SPARQL UPDATE query (INSERT, DELETE, etc.)
 
         Returns:
-            Update response
+            requests.Response from the update endpoint
         """
-        self.connect()
-        self.sparql_obj.setQuery(query_message)
-        self.sparql_obj.setMethod(POST)
-        query_output = self.sparql_obj.query()
-        return query_output
+        resp = requests.post(
+            self.update_endpoint,
+            data=query_message.encode('utf-8'),
+            headers={'Content-Type': 'application/sparql-update'},
+        )
+        resp.raise_for_status()
+        return resp

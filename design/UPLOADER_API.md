@@ -1,299 +1,122 @@
-# Uploader API Reference
+# Uploader API
 
-All CIM-Loader uploaders provide a **consistent, format-aware API** for uploading RDF data to different databases.
+All CIM-Loader uploaders share the same public API. Format is auto-detected
+from the file extension (or the URL path extension for `upload_from_url`).
 
-## Common Pattern
-
-All uploaders follow this architecture:
+## Public methods
 
 ```python
-# Auto-detect format from file extension
-uploader.upload_from_file(filepath='./models', filename='grid.xml')
-
-# Or use format-specific methods
-uploader.upload_from_xml(filepath='./models', filename='grid.xml')
-uploader.upload_from_ttl(filepath='./models', filename='grid.ttl')
-uploader.upload_from_ntriples(filepath='./models', filename='grid.nt')
-uploader.upload_from_jsonld(filepath='./models', filename='grid.jsonld')
+uploader.upload_from_file(filepath: str, filename: str) -> None
+uploader.upload_from_url(url: str) -> None
+uploader.upload_from_graphmodel(graph_dict: dict, feeder_mrid: str | None = None) -> None
 ```
 
-## Blazegraph Uploader
+Uploaders inherit from their corresponding `Connection` class, so they also
+expose `connect`, `disconnect`, `execute`, `configure`, `drop_all`.
 
-### Supported Formats
+## Extension → content type mapping
 
-| Method | Format | File Extensions | Content-Type |
-|--------|--------|----------------|--------------|
-| `upload_from_file()` | Auto-detect | All below | Detected |
-| `upload_from_xml()` | RDF/XML | `.xml`, `.rdf` | `application/rdf+xml` |
-| `upload_from_ttl()` | Turtle | `.ttl`, `.turtle` | `text/turtle` |
-| `upload_from_ntriples()` | N-Triples | `.nt`, `.ntriples` | `application/n-triples` |
-| `upload_from_jsonld()` | JSON-LD | `.jsonld`, `.json-ld` | `application/ld+json` |
+Single source of truth: `cimloader/_formats.py`.
 
-### Example
+| Extension(s) | Content type |
+|--------------|--------------|
+| `.xml`, `.rdf` | `application/rdf+xml` |
+| `.ttl`, `.turtle` | `text/turtle` |
+| `.nt`, `.ntriples` | `application/n-triples` |
+| `.nq`, `.nquads` | `application/n-quads` |
+| `.jsonld`, `.json-ld` | `application/ld+json` |
+| `.trig` | `application/trig` |
+
+Unknown extensions raise `ValueError` at upload time.
+
+## Uploader specifics
+
+### BlazegraphUploader
+- `upload_from_file` uploads via `curl` POST to the SPARQL endpoint.
+- `upload_from_url` fetches with `requests.get` then POSTs the bytes.
+- No constructor arguments.
+
+### Neo4jUploader
+- `upload_from_file` / `upload_from_url` both call the `n10s.rdf.import.fetch`
+  Cypher procedure. The URL variant passes the URL straight through to n10s
+  rather than downloading locally first.
+- Optional `container="<name>"` constructor arg `docker cp`s files into
+  the Neo4j container — use this when the DB is in Docker but the file is
+  on the host. (Irrelevant for `upload_from_url`, which n10s fetches itself.)
+- Neo4j requires `uploader.configure()` to be called once per database.
+
+### OxigraphUploader
+- `upload_from_file` uploads via HTTP POST to `<base>/store`.
+- `upload_from_url` fetches with `requests.get` then POSTs to the same endpoint.
+- Optional `container="<name>"` constructor arg behaves the same as Neo4j's.
+- Handles both `http://host:port` and `http://host:port/query` in `CIMG_URL`.
+
+### NeptuneUploader
+- `upload_from_file` uploads via `curl` POST to the SPARQL endpoint.
+- `upload_from_url` fetches with `requests.get` then POSTs the bytes.
+- AWS SigV4 auth and S3 bulk loading are planned (see `design/TODO.md`);
+  today the uploader only works against IAM-disabled Neptune clusters.
+
+## Basic usage
 
 ```python
 import os
 from cimloader.uploaders import BlazegraphUploader
 
 os.environ['CIMG_URL'] = 'http://localhost:8889/bigdata/namespace/kb/sparql'
+os.environ['CIMG_CIM_PROFILE'] = 'rc4_2021'
+os.environ['CIMG_NAMESPACE'] = 'http://iec.ch/TC57/CIM100#'
 
 uploader = BlazegraphUploader()
+uploader.upload_from_file('./models', 'ieee13.xml')
+uploader.upload_from_file('./models', 'ieee13.ttl')  # same method, different format
 
-# Auto-detect format
-uploader.upload_from_file(filepath='./models', filename='grid.xml')
-
-# Explicit format
-uploader.upload_from_ttl(filepath='./models', filename='grid.ttl')
+# Or straight from a raw URL (e.g. GitHub raw):
+uploader.upload_from_url(
+    'https://raw.githubusercontent.com/PNNL-CIM-Tools/CIM-Loader/main/tests/test_models/ieee13_seto.xml'
+)
 ```
 
-### Supported Extensions
-- `.xml`, `.rdf` → RDF/XML
-- `.ttl`, `.turtle` → Turtle
-- `.nt`, `.ntriples` → N-Triples
-- `.nq`, `.nquads` → N-Quads
-- `.jsonld`, `.json-ld` → JSON-LD
-- `.trig` → TriG
+## Database migration (GraphModel)
 
-## Neo4j Uploader (via n10s)
-
-### Supported Formats
-
-| Method | Format | File Extensions | n10s Format |
-|--------|--------|----------------|-------------|
-| `upload_from_file()` | Auto-detect | All below | Detected |
-| `upload_from_xml()` | RDF/XML | `.xml`, `.rdf` | `RDF/XML` |
-| `upload_from_ttl()` | Turtle | `.ttl`, `.turtle` | `Turtle` |
-| `upload_from_ntriples()` | N-Triples | `.nt`, `.ntriples` | `N-Triples` |
-| `upload_from_jsonld()` | JSON-LD | `.jsonld`, `.json-ld` | `JSON-LD` |
-
-### Example
+All four uploaders accept a CIMantic Graphs `GraphModel.graph` dict. This
+is the canonical way to move data between databases:
 
 ```python
-import os
+from cimgraph.databases import BlazegraphConnection
+from cimgraph.models import FeederModel
 from cimloader.uploaders import Neo4jUploader
+import cimgraph.data_profile.rc4_2021 as cim
 
-os.environ['CIMG_URL'] = 'neo4j://localhost:7687'
-os.environ['CIMG_USERNAME'] = 'neo4j'
-os.environ['CIMG_PASSWORD'] = 'password'
+source = FeederModel(
+    container=cim.Feeder(mRID='feeder-123'),
+    connection=BlazegraphConnection(),
+)
 
-# Optional: container name for docker cp
-uploader = Neo4jUploader(container='neo4j_cim_loader')
-
-# Auto-detect format
-uploader.upload_from_file(filepath='./models', filename='grid.xml')
-
-# Explicit format
-uploader.upload_from_ttl(filepath='./models', filename='grid.ttl')
+target = Neo4jUploader(container='neo4j_cim_loader')
+target.configure()
+target.upload_from_graphmodel(source.graph, feeder_mrid='feeder-123')
 ```
 
-### Container Mode
+Merging multiple feeders: chain `FeederModel(graph=previous.graph)` calls,
+then upload the final graph once.
 
-When `container` parameter is provided, files are copied to the Neo4j container before import:
+## Format compatibility
 
-```python
-# With container - uses docker cp
-uploader = Neo4jUploader(container='neo4j_cim_loader')
-uploader.upload_from_file(filepath='./models', filename='grid.xml')
+| Format | Blazegraph | Neo4j | Oxigraph | Neptune |
+|--------|-----------|-------|----------|---------|
+| RDF/XML  | ✅ | ✅ | ✅ | ✅ |
+| Turtle   | ✅ | ✅ | ✅ | ✅ |
+| N-Triples | ✅ | ✅ | ✅ | ✅ |
+| N-Quads  | ✅ | ✅ | ✅ | ✅ |
+| JSON-LD  | ✅ | ✅ | ❌ | ⚠️ |
+| TriG     | ✅ | ✅ | ❌ | ⚠️ |
 
-# Without container - direct file path (Neo4j must have access)
-uploader = Neo4jUploader()
-uploader.upload_from_file(filepath='/var/lib/neo4j/import/models', filename='grid.xml')
-```
+⚠️ = SPARQL 1.1 supports it, but it hasn't been verified end-to-end.
 
-### Supported Extensions
-- `.xml`, `.rdf` → RDF/XML
-- `.ttl`, `.turtle` → Turtle
-- `.nt`, `.ntriples` → N-Triples
-- `.jsonld`, `.json-ld` → JSON-LD
-- `.nq`, `.nquads` → N-Quads
-- `.trig` → TriG
+## Error handling
 
-## Oxigraph Uploader
-
-### Supported Formats
-
-| Method | Format | File Extensions | Content-Type |
-|--------|--------|----------------|--------------|
-| `upload_from_file()` | Auto-detect | All below | Detected |
-| `upload_from_xml()` | RDF/XML | `.xml`, `.rdf` | `application/rdf+xml` |
-| `upload_from_ttl()` | Turtle | `.ttl`, `.turtle` | `text/turtle` |
-| `upload_from_ntriples()` | N-Triples | `.nt`, `.ntriples` | `application/n-triples` |
-| `upload_from_nquads()` | N-Quads | `.nq`, `.nquads` | `application/n-quads` |
-
-### Example
-
-```python
-import os
-from cimloader.uploaders import OxigraphUploader
-
-os.environ['CIMG_URL'] = 'http://localhost:7878/query'
-
-# Direct upload
-uploader = OxigraphUploader()
-uploader.upload_from_file(filepath='./models', filename='grid.xml')
-
-# Container mode
-uploader = OxigraphUploader(container='oxigraph_cim_loader')
-uploader.upload_from_file(filepath='./models', filename='grid.xml')
-```
-
-### Container Mode
-
-Similar to Neo4j, Oxigraph supports container mode:
-
-```python
-# With container - uses docker cp and curl inside container
-uploader = OxigraphUploader(container='oxigraph_cim_loader')
-
-# Without container - direct HTTP upload
-uploader = OxigraphUploader()
-```
-
-### Supported Extensions
-- `.xml`, `.rdf` → RDF/XML
-- `.ttl`, `.turtle` → Turtle
-- `.nt`, `.ntriples` → N-Triples
-- `.nq`, `.nquads` → N-Quads
-
-## API Design Principles
-
-### 1. Format-Specific Methods
-
-Each uploader provides format-specific methods (`upload_from_xml()`, `upload_from_ttl()`, etc.) that:
-- Accept `filepath` and `filename` parameters
-- Call internal `_upload()` method with appropriate content-type/format
-- Are explicit and self-documenting
-
-### 2. Auto-Detection
-
-The `upload_from_file()` method:
-- Detects format from file extension using `_get_content_type()` or `_get_n10s_format()`
-- Convenient for generic file uploads
-- Raises `ValueError` if extension is not recognized
-
-### 3. Internal Methods
-
-Private methods handle the actual upload:
-- **Blazegraph**: `_upload(filepath, filename, content_type)`
-- **Neo4j**: `_upload(filepath, filename, format)`
-- **Oxigraph**: `_upload_with_format(filepath, filename, content_type)`
-
-### 4. Consistent Signatures
-
-All public methods use the same signature:
-```python
-def upload_from_X(self, filepath: str, filename: str) -> Optional[Records]:
-    pass
-```
-
-This makes it easy to switch between:
-- Different databases (Blazegraph ↔ Oxigraph)
-- Different formats (XML ↔ Turtle)
-
-## Error Handling
-
-All uploaders raise exceptions for:
-- **Unsupported file formats**: `ValueError` with list of supported extensions
-- **Upload failures**: `subprocess.CalledProcessError` or database-specific exceptions
-- **Missing files**: `FileNotFoundError` (from subprocess or filesystem)
-
-Example:
-```python
-try:
-    uploader.upload_from_file(filepath='./models', filename='data.txt')
-except ValueError as e:
-    print(f"Unsupported format: {e}")
-except subprocess.CalledProcessError as e:
-    print(f"Upload failed: {e}")
-```
-
-## Best Practices
-
-### 1. Use Format-Specific Methods When Possible
-
-More explicit and self-documenting:
-```python
-# Good - clear intent
-uploader.upload_from_xml(filepath='./models', filename='grid.xml')
-
-# Less clear
-uploader.upload_from_file(filepath='./models', filename='grid.xml')
-```
-
-### 2. Use Auto-Detection for Generic Code
-
-When writing generic upload logic:
-```python
-def upload_model(uploader, filepath, filename):
-    """Works with any uploader and format"""
-    uploader.upload_from_file(filepath=filepath, filename=filename)
-```
-
-### 3. Configure via Environment Variables
-
-Set configuration before creating uploaders:
-```python
-import os
-
-os.environ['CIMG_URL'] = 'http://localhost:8889/bigdata/namespace/kb/sparql'
-os.environ['CIMG_CIM_PROFILE'] = 'rc4_2021'
-os.environ['CIMG_NAMESPACE'] = 'http://iec.ch/TC57/CIM100#'
-
-uploader = BlazegraphUploader()
-```
-
-### 4. Use Container Mode When Appropriate
-
-For Neo4j and Oxigraph, use container mode when:
-- Running in Docker
-- Database doesn't have direct filesystem access
-- Files are on host but database is in container
-
-```python
-# Container mode
-uploader = Neo4jUploader(container='neo4j_cim_loader')
-
-# Direct mode (database can access files directly)
-uploader = Neo4jUploader()
-```
-
-## Complete Example
-
-```python
-import os
-from cimloader.uploaders import BlazegraphUploader, Neo4jUploader, OxigraphUploader
-
-# Configure common settings
-os.environ['CIMG_CIM_PROFILE'] = 'rc4_2021'
-os.environ['CIMG_NAMESPACE'] = 'http://iec.ch/TC57/CIM100#'
-
-# Upload to Blazegraph
-os.environ['CIMG_URL'] = 'http://localhost:8889/bigdata/namespace/kb/sparql'
-blazegraph = BlazegraphUploader()
-blazegraph.upload_from_xml(filepath='./models', filename='grid.xml')
-
-# Upload to Neo4j
-os.environ['CIMG_URL'] = 'neo4j://localhost:7687'
-os.environ['CIMG_USERNAME'] = 'neo4j'
-os.environ['CIMG_PASSWORD'] = 'password'
-neo4j = Neo4jUploader(container='neo4j_cim_loader')
-neo4j.upload_from_ttl(filepath='./models', filename='grid.ttl')
-
-# Upload to Oxigraph
-os.environ['CIMG_URL'] = 'http://localhost:7878/query'
-oxigraph = OxigraphUploader()
-oxigraph.upload_from_ntriples(filepath='./models', filename='grid.nt')
-```
-
-## Format Compatibility Matrix
-
-| Format | Blazegraph | Neo4j (n10s) | Oxigraph |
-|--------|-----------|-------------|----------|
-| RDF/XML | ✅ | ✅ | ✅ |
-| Turtle | ✅ | ✅ | ✅ |
-| N-Triples | ✅ | ✅ | ✅ |
-| N-Quads | ✅ | ✅ | ✅ |
-| JSON-LD | ✅ | ✅ | ❌ |
-| TriG | ✅ | ✅ | ❌ |
-
-Note: All databases support the core RDF formats (RDF/XML, Turtle, N-Triples, N-Quads). JSON-LD and TriG support varies.
+- Unknown file extension → `ValueError` (from `content_type_from_filename`)
+- Curl / n10s / HTTP failures → `subprocess.CalledProcessError` or Neo4j
+  driver exceptions bubble up — they are not caught by the uploader.
+- Missing CIM profile when calling `upload_from_graphmodel` → `RuntimeError`.

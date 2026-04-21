@@ -18,7 +18,12 @@ from pathlib import Path
 
 from cimloader.databases import BlazegraphConnection
 from cimloader.uploaders import BlazegraphUploader
-from conftest import count_triples, verify_cim_objects
+from conftest import (
+    IEEE13_ASSETS_URL,
+    IEEE13_URL,
+    count_triples,
+    verify_cim_objects,
+)
 
 
 # =============================================================================
@@ -140,6 +145,40 @@ class TestBlazegraphUpload:
         assert cim_counts['lines'] > 0, "Should have ACLineSegments"
         # Note: Transformers and loads may or may not be present depending on model
         assert sum(cim_counts.values()) > 0, "Should have some CIM objects"
+
+
+# =============================================================================
+# URL Upload Tests
+# =============================================================================
+
+@pytest.mark.integration
+@pytest.mark.blazegraph
+class TestBlazegraphUploadFromURL:
+    """Test uploading CIM models fetched directly from a raw GitHub URL."""
+
+    def test_upload_from_url_ieee13(
+        self, blazegraph_uploader, blazegraph_connection, raw_github_reachable
+    ):
+        """Download IEEE13.xml from raw GitHub and verify it loaded."""
+        blazegraph_connection.drop_all()
+        assert count_triples(blazegraph_connection) == 0
+
+        blazegraph_uploader.upload_from_url(IEEE13_URL)
+
+        assert count_triples(blazegraph_connection) > 1000
+        cim_counts = verify_cim_objects(blazegraph_connection)
+        assert cim_counts['feeders'] > 0, "Should have at least one Feeder"
+        assert cim_counts['lines'] > 0, "Should have ACLineSegments"
+
+    def test_upload_from_url_ieee13_assets(
+        self, blazegraph_uploader, blazegraph_connection, raw_github_reachable
+    ):
+        """Download IEEE13_Assets.xml from raw GitHub and verify it loaded."""
+        blazegraph_connection.drop_all()
+
+        blazegraph_uploader.upload_from_url(IEEE13_ASSETS_URL)
+
+        assert count_triples(blazegraph_connection) > 1000
 
 
 # =============================================================================
