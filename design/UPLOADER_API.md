@@ -29,31 +29,45 @@ Single source of truth: `cimloader/_formats.py`.
 
 Unknown extensions raise `ValueError` at upload time.
 
+## Base IRI normalization
+
+Every uploader accepts a `base_iri` constructor argument (default
+`http://gridappsd.org/cim/`). CIM RDF/XML files routinely use
+`rdf:ID="_UUID"` / `rdf:resource="#_UUID"` without declaring a document
+base, which strict parsers (Oxigraph, Jena) reject. Before upload, RDF/XML
+bytes are rewritten to carry `xml:base="<base_iri>"` on the root element
+if one isn't already present — so all four databases produce identical
+triples from the same input file. Files that already declare `xml:base`
+are left untouched. Non-RDF/XML formats pass through unchanged.
+
 ## Uploader specifics
 
 ### BlazegraphUploader
-- `upload_from_file` uploads via `curl` POST to the SPARQL endpoint.
-- `upload_from_url` fetches with `requests.get` then POSTs the bytes.
-- No constructor arguments.
+- `upload_from_file` / `upload_from_url` both POST via `requests` to the
+  SPARQL endpoint after base-IRI normalization.
+- Constructor: `base_iri=DEFAULT_BASE_IRI`.
 
 ### Neo4jUploader
-- `upload_from_file` / `upload_from_url` both call the `n10s.rdf.import.fetch`
-  Cypher procedure. The URL variant passes the URL straight through to n10s
-  rather than downloading locally first.
-- Optional `container="<name>"` constructor arg `docker cp`s files into
-  the Neo4j container — use this when the DB is in Docker but the file is
-  on the host. (Irrelevant for `upload_from_url`, which n10s fetches itself.)
+- `upload_from_file` / `upload_from_url` read the bytes in-process, apply
+  base-IRI normalization, stage to a tempfile, then call
+  `n10s.rdf.import.fetch` with a `file://` URL.
+- Optional `container="<name>"` constructor arg `docker cp`s the rewritten
+  bytes into the container's import dir (and chmods them readable) — use
+  this when Neo4j runs in Docker but the uploader runs on the host.
+- Constructor: `container=None, base_iri=DEFAULT_BASE_IRI`.
 - Neo4j requires `uploader.configure()` to be called once per database.
 
 ### OxigraphUploader
-- `upload_from_file` uploads via HTTP POST to `<base>/store`.
-- `upload_from_url` fetches with `requests.get` then POSTs to the same endpoint.
-- Optional `container="<name>"` constructor arg behaves the same as Neo4j's.
+- `upload_from_file` / `upload_from_url` POST via `requests` to
+  `<base>/store?default` (the `?default` ensures triples land in the
+  default graph instead of a fresh named graph per request).
 - Handles both `http://host:port` and `http://host:port/query` in `CIMG_URL`.
+- Constructor: `base_iri=DEFAULT_BASE_IRI`.
 
 ### NeptuneUploader
-- `upload_from_file` uploads via `curl` POST to the SPARQL endpoint.
-- `upload_from_url` fetches with `requests.get` then POSTs the bytes.
+- `upload_from_file` / `upload_from_url` POST via `requests` to the SPARQL
+  endpoint after base-IRI normalization.
+- Constructor: `base_iri=DEFAULT_BASE_IRI`.
 - AWS SigV4 auth and S3 bulk loading are planned (see `design/TODO.md`);
   today the uploader only works against IAM-disabled Neptune clusters.
 
@@ -117,6 +131,7 @@ then upload the final graph once.
 ## Error handling
 
 - Unknown file extension → `ValueError` (from `content_type_from_filename`)
-- Curl / n10s / HTTP failures → `subprocess.CalledProcessError` or Neo4j
-  driver exceptions bubble up — they are not caught by the uploader.
+- HTTP / n10s / `docker cp` failures → `requests.HTTPError`, Neo4j driver
+  exceptions, or `subprocess.CalledProcessError` bubble up — the uploader
+  does not catch them.
 - Missing CIM profile when calling `upload_from_graphmodel` → `RuntimeError`.

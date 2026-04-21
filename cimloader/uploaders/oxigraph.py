@@ -1,17 +1,15 @@
 """Oxigraph uploader for CIM data.
 
-Uploads RDF data to an Oxigraph triplestore via its /store REST endpoint,
-either directly over HTTP or by copying the file into a Docker container
-first and running curl inside.
+Uploads RDF data to an Oxigraph triplestore via its /store REST endpoint.
 """
 
 from __future__ import annotations
 
 import logging
-import subprocess
 
 import requests
 
+from cimloader._base_iri import DEFAULT_BASE_IRI, prepare_rdf_bytes
 from cimloader._formats import content_type_from_filename, content_type_from_url
 from cimloader.databases import OxigraphConnection
 
@@ -19,9 +17,9 @@ _log = logging.getLogger(__name__)
 
 
 class OxigraphUploader(OxigraphConnection):
-    def __init__(self, container: str | None = None) -> None:
+    def __init__(self, base_iri: str = DEFAULT_BASE_IRI) -> None:
         super().__init__()
-        self.container = container
+        self.base_iri = base_iri
 
         # Oxigraph's SPARQL URL typically ends in /query; strip it to get
         # the base URL for the /store upload endpoint.
@@ -37,10 +35,21 @@ class OxigraphUploader(OxigraphConnection):
     def upload_from_file(self, filepath: str, filename: str) -> None:
         """Upload an RDF file to Oxigraph.
 
-        Format is auto-detected from the file extension.
+        Format is auto-detected from the file extension. RDF/XML files get
+        `xml:base=<self.base_iri>` injected when they don't already declare
+        one, so fragment IRIs (`#_UUID`) resolve deterministically.
         """
         content_type = content_type_from_filename(filename)
-        self._upload(filepath, filename, content_type)
+        with open(f"{filepath}/{filename}", "rb") as f:
+            data = prepare_rdf_bytes(f.read(), content_type, self.base_iri)
+        _log.info("Uploading %s to Oxigraph at %s", filename, self.upload_endpoint)
+        resp = requests.post(
+            self.upload_endpoint,
+            data=data,
+            headers={"Content-Type": content_type},
+        )
+        resp.raise_for_status()
+        _log.info("Successfully uploaded %s to Oxigraph", filename)
 
     def upload_from_url(self, url: str) -> None:
         """Fetch an RDF file from a URL and upload it to Oxigraph.
@@ -51,9 +60,10 @@ class OxigraphUploader(OxigraphConnection):
         _log.info("Fetching %s for upload to Oxigraph", url)
         resp = requests.get(url)
         resp.raise_for_status()
+        data = prepare_rdf_bytes(resp.content, content_type, self.base_iri)
         post = requests.post(
             self.upload_endpoint,
-            data=resp.content,
+            data=data,
             headers={"Content-Type": content_type},
         )
         post.raise_for_status()
@@ -76,34 +86,3 @@ class OxigraphUploader(OxigraphConnection):
 
         _log.info("Uploading graph with %d object types to Oxigraph", len(graph_dict))
         FeederModel(container=container, connection=self, graph=graph_dict)
-
-    def _upload(self, filepath: str, filename: str, content_type: str) -> None:
-        full_path = f"{filepath}/{filename}"
-
-        if self.container:
-            container_path = f"/tmp/{filename}"
-            _log.info("Copying %s to container %s:%s", full_path, self.container, container_path)
-            subprocess.check_call([
-                "docker", "cp", full_path, f"{self.container}:{container_path}",
-            ])
-            _log.info("Uploading %s to Oxigraph in container", filename)
-            subprocess.check_call([
-                "docker", "exec", self.container,
-                "curl", "-X", "POST",
-                "-H", f"Content-Type: {content_type}",
-                "--data-binary", f"@{container_path}",
-                self.upload_endpoint,
-            ])
-            subprocess.call([
-                "docker", "exec", self.container, "rm", container_path,
-            ])
-        else:
-            _log.info("Uploading %s to Oxigraph at %s", filename, self.upload_endpoint)
-            subprocess.check_call([
-                "curl", "-X", "POST",
-                "-H", f"Content-Type: {content_type}",
-                "--data-binary", f"@{full_path}",
-                self.upload_endpoint,
-            ])
-
-        _log.info("Successfully uploaded %s to Oxigraph", filename)

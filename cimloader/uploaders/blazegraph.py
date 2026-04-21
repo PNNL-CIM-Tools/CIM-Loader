@@ -1,8 +1,8 @@
 import logging
-import subprocess
 
 import requests
 
+from cimloader._base_iri import DEFAULT_BASE_IRI, prepare_rdf_bytes
 from cimloader._formats import content_type_from_filename, content_type_from_url
 from cimloader.databases import BlazegraphConnection
 
@@ -10,24 +10,25 @@ _log = logging.getLogger(__name__)
 
 
 class BlazegraphUploader(BlazegraphConnection):
-    def __init__(self) -> None:
+    def __init__(self, base_iri: str = DEFAULT_BASE_IRI) -> None:
         super().__init__()
+        self.base_iri = base_iri
 
     def upload_from_file(self, filepath: str, filename: str) -> None:
         """Upload an RDF file to Blazegraph.
 
         Format is auto-detected from the file extension (.xml, .ttl, .nt,
-        .nq, .jsonld, .trig, and their common aliases).
+        .nq, .jsonld, .trig, and their common aliases). RDF/XML files get
+        `xml:base=<self.base_iri>` injected when they don't already declare
+        one, so fragment IRIs (`#_UUID`) resolve deterministically.
         """
         content_type = content_type_from_filename(filename)
-        full_path = f"{filepath}/{filename}"
-        subprocess.call([
-            "curl", "-s", "-D-",
-            "-H", f"Content-Type: {content_type}",
-            "--upload-file", full_path,
-            "-X", "POST",
-            self.url,
-        ])
+        with open(f"{filepath}/{filename}", "rb") as f:
+            data = prepare_rdf_bytes(f.read(), content_type, self.base_iri)
+        resp = requests.post(
+            self.url, data=data, headers={"Content-Type": content_type}
+        )
+        resp.raise_for_status()
 
     def upload_from_url(self, url: str) -> None:
         """Fetch an RDF file from a URL and upload it to Blazegraph.
@@ -38,10 +39,9 @@ class BlazegraphUploader(BlazegraphConnection):
         _log.info("Fetching %s for upload to Blazegraph", url)
         resp = requests.get(url)
         resp.raise_for_status()
+        data = prepare_rdf_bytes(resp.content, content_type, self.base_iri)
         post = requests.post(
-            self.url,
-            data=resp.content,
-            headers={"Content-Type": content_type},
+            self.url, data=data, headers={"Content-Type": content_type}
         )
         post.raise_for_status()
 

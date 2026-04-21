@@ -147,41 +147,6 @@ class TestOxigraphDirectUpload:
 
 
 # =============================================================================
-# Upload Tests - Container Mode
-# =============================================================================
-
-@pytest.mark.integration
-@pytest.mark.oxigraph
-@pytest.mark.requires_docker
-class TestOxigraphContainerUpload:
-    """Test Oxigraph upload via Docker container."""
-
-    def test_upload_via_container(self, oxigraph_connection, test_model_path):
-        """Test uploading via Docker container using docker cp."""
-        from cimloader.uploaders import OxigraphUploader
-
-        # Create uploader with container name
-        uploader = OxigraphUploader(container='oxigraph_cim_loader')
-
-        # Clear store
-        oxigraph_connection.drop_all()
-
-        # Upload file via container
-        uploader.upload_from_file(
-            filepath=str(test_model_path),
-            filename="ieee13_seto.xml"
-        )
-
-        # Verify upload
-        final_count = count_triples(oxigraph_connection)
-        assert final_count > 1000, "Should have uploaded data via container"
-
-        # Verify CIM structure
-        cim_counts = verify_cim_objects(oxigraph_connection)
-        assert sum(cim_counts.values()) > 0, "Should have CIM objects"
-
-
-# =============================================================================
 # URL Upload Tests
 # =============================================================================
 

@@ -35,19 +35,17 @@ single target database and **append** profile-specific attributes to
 existing objects instead of overwriting them per-file. See
 `cimloader/batch_handlers/README.md`.
 
-## Oxigraph rough edges
+## Base IRI / CIM 18 alignment
 
-Uncovered while writing the `upload_from_url` integration tests. Pre-existing,
-not introduced by the cleanup:
+All four uploaders now inject `xml:base="http://gridappsd.org/cim/"` into
+RDF/XML files that don't declare one, so fragment IRIs (`#_UUID`) resolve
+identically across Blazegraph, Neo4j, Oxigraph, and Neptune. This is
+Option A — backwards compatible with CIM 15–17 (IEC 61970-301).
 
-- `tests/test_models/ieee13_2021.xml` fails to parse in Oxigraph because it
-  uses bare-fragment IRIs (`#_ABCD...`) with no document base. Blazegraph is
-  permissive; Oxigraph enforces RFC 3987. Either fix the model to declare
-  `xml:base`, or find a tolerant parser path.
-- `TestOxigraphContainerUpload` execs `curl` inside the `ghcr.io/oxigraph/oxigraph`
-  image, which doesn't ship curl. Either switch to a variant that has curl
-  or upload via a different in-container mechanism (e.g. `wget`, or a POST
-  from the host without `docker cp`).
+CIM 18 moves to `urn:uuid:<UUID>` as the canonical `@id` and the new
+`http://cim.ucaiug.io/ns/101.0#` namespace. When CIM 18 ships, revisit
+`_base_iri.py` to rewrite `rdf:ID="_UUID"` / `rdf:resource="#_UUID"` into
+`urn:uuid:` IRIs (Option B) rather than injecting a local base.
 
 ## NAERM integration
 

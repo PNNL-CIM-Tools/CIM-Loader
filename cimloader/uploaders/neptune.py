@@ -8,10 +8,10 @@ endpoint. AWS SigV4 auth and S3 bulk loading are planned — see
 from __future__ import annotations
 
 import logging
-import subprocess
 
 import requests
 
+from cimloader._base_iri import DEFAULT_BASE_IRI, prepare_rdf_bytes
 from cimloader._formats import content_type_from_filename, content_type_from_url
 from cimloader.databases import NeptuneConnection
 
@@ -19,18 +19,23 @@ _log = logging.getLogger(__name__)
 
 
 class NeptuneUploader(NeptuneConnection):
-    def __init__(self) -> None:
+    def __init__(self, base_iri: str = DEFAULT_BASE_IRI) -> None:
         super().__init__()
+        self.base_iri = base_iri
 
     def upload_from_file(self, filepath: str, filename: str) -> None:
         """Upload an RDF file to Neptune via HTTP POST.
 
-        Format is auto-detected from the file extension. For large
-        datasets (>100MB), Neptune's S3 bulk loader is recommended
+        Format is auto-detected from the file extension. RDF/XML files get
+        `xml:base=<self.base_iri>` injected when they don't already declare
+        one, so fragment IRIs (`#_UUID`) resolve deterministically. For
+        large datasets (>100MB), Neptune's S3 bulk loader is recommended
         (not yet implemented).
         """
         content_type = content_type_from_filename(filename)
-        self._upload(filepath, filename, content_type)
+        with open(f"{filepath}/{filename}", "rb") as f:
+            data = prepare_rdf_bytes(f.read(), content_type, self.base_iri)
+        self._post(data, filename, content_type)
 
     def upload_from_url(self, url: str) -> None:
         """Fetch an RDF file from a URL and upload it to Neptune.
@@ -40,23 +45,11 @@ class NeptuneUploader(NeptuneConnection):
         see `design/TODO.md`.
         """
         content_type = content_type_from_url(url)
-
-        if self.use_iam_auth:
-            _log.warning(
-                "AWS authentication not fully implemented. "
-                "Upload may fail if Neptune requires IAM authentication."
-            )
-
         _log.info("Fetching %s for upload to Neptune", url)
         resp = requests.get(url)
         resp.raise_for_status()
-        post = requests.post(
-            self.url,
-            data=resp.content,
-            headers={"Content-Type": content_type},
-        )
-        post.raise_for_status()
-        _log.info("Successfully uploaded %s to Neptune", url)
+        data = prepare_rdf_bytes(resp.content, content_type, self.base_iri)
+        self._post(data, url, content_type)
 
     def upload_from_graphmodel(self, graph_dict: dict, feeder_mrid: str | None = None) -> None:
         """Upload a CIMantic Graphs GraphModel to Neptune."""
@@ -76,28 +69,15 @@ class NeptuneUploader(NeptuneConnection):
         _log.info("Uploading graph with %d object types to Neptune", len(graph_dict))
         FeederModel(container=container, connection=self, graph=graph_dict)
 
-    def _upload(self, filepath: str, filename: str, content_type: str) -> None:
-        full_path = f"{filepath}/{filename}"
-
+    def _post(self, data: bytes, source: str, content_type: str) -> None:
         if self.use_iam_auth:
             _log.warning(
                 "AWS authentication not fully implemented. "
                 "Upload may fail if Neptune requires IAM authentication."
             )
-
-        _log.info("Uploading %s to Neptune at %s", filename, self.url)
-
-        cmd = [
-            "curl", "-X", "POST",
-            "-H", f"Content-Type: {content_type}",
-            "--data-binary", f"@{full_path}",
-            self.url,
-        ]
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            _log.info("Successfully uploaded %s to Neptune", filename)
-            if result.stdout:
-                _log.debug("Response: %s", result.stdout)
-        except subprocess.CalledProcessError as e:
-            _log.error("Failed to upload %s to Neptune: %s", filename, e.stderr)
-            raise
+        _log.info("Uploading %s to Neptune at %s", source, self.url)
+        resp = requests.post(
+            self.url, data=data, headers={"Content-Type": content_type}
+        )
+        resp.raise_for_status()
+        _log.info("Successfully uploaded %s to Neptune", source)
