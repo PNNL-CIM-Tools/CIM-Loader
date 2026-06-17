@@ -9,6 +9,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "cim-graph>=0.4.3a1",
+    "requests>=2.31.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

@@ -39,3 +39,11 @@ services:
     volumes:
       - ./docker/oxigraph:/data
     command: serve --location /data --bind 0.0.0.0:7878
+
+  graphdb:
+    image: ontotext/graphdb:11.3.2
+    container_name: graphdb_cim_loader
+    ports:
+      - 7200:7200
+    volumes:
+      - ./docker/graphdb:/opt/graphdb/home

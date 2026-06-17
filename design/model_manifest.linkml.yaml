@@ -1,0 +1,147 @@
+id: https://gridappsd.org/cimhub/model-manifest
+name: model-manifest
+title: CIM Model Provenance Manifest
+description: >-
+  Schema for the model-provenance manifest that catalogs golden feeder models,
+  their distribution as IEC 61970-557 OpenXML (.cimx) packages, and their
+  fetch sources. Slots are SKOS-mapped to the IEC 61970-552 metadata profile
+  (Dataset / GridDataset / Activity) so the manifest is a forward-compatible
+  profile of the standard's own provenance vocabulary.
+
+  NOTE: this schema is the CONTRACT and documentation. The runtime loader in
+  `cimloader` parses the conforming YAML with plain pyyaml into dataclasses and
+  does NOT depend on linkml/linkml-runtime. Validating an instance against this
+  schema is an optional CI step in the catalog repo (Powergrid-Models), where
+  this schema and the `models.yaml` instance are intended to live.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  manifest: https://gridappsd.org/cimhub/model-manifest/
+  md: http://www.ucaiug.org/Metadata#       # IEC 61970-552 metadata profile
+  dcterms: http://purl.org/dc/terms/
+
+default_prefix: manifest
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+
+  ModelEntry:
+    description: One feeder model in the catalog.
+    class_uri: md:GridModel
+    exact_mappings:
+      - md:GridModel
+    slots:
+      - id
+      - family
+      - version
+      - golden_format
+      - golden_direction
+      - feeder_mrid
+      - doi
+      - parts
+
+  Part:
+    description: >-
+      One physical artifact in a model's distribution. Maps to an OPC package
+      part (IEC 61970-557). Identity is `id` + `checksum`, never `filename`
+      (557 §4.5: filenames carry no meaning).
+    class_uri: md:Distribution
+    slots:
+      - id
+      - profile
+      - content_type
+      - filename
+      - checksum
+      - sources
+      - external
+
+slots:
+
+  id:
+    description: Stable identifier. For a Part this is the persistent OPC relationship Id (557 §4.4).
+    identifier: true
+    required: true
+
+  family:
+    description: Provenance grouping; one family = one Zenodo record / DOI. Maps to the source authority.
+    exact_mappings:
+      - md:Dataset.authority
+    required: true
+
+  version:
+    description: Catalog version of the model.
+    exact_mappings:
+      - md:Dataset.version
+
+  golden_format:
+    description: Which serialization is authoritative for this model.
+    range: GoldenFormatEnum
+
+  golden_direction:
+    description: >-
+      Whether the native format or the CIM is the trusted reference, driving how
+      cross-format tests assert.
+    range: GoldenDirectionEnum
+
+  feeder_mrid:
+    description: The CIM Feeder mRID for the model.
+
+  doi:
+    description: Citation DOI for the family/version (may be absent, e.g. OEDI-hosted).
+
+  parts:
+    description: The physical artifacts comprising the distribution.
+    range: Part
+    multivalued: true
+    inlined_as_list: true
+    required: true
+
+  profile:
+    description: CGMES-style profile of this part (combined, EQ, SSH, SV, TP, ...).
+    related_mappings:
+      - md:GridDataset.contains
+    ifabsent: string(combined)
+
+  content_type:
+    description: IANA/IETF-registered media type of the part (557 §4.6).
+    ifabsent: string(application/rdf+xml)
+
+  filename:
+    description: Convenience filename only — NOT identity (557 §4.5).
+
+  checksum:
+    description: '"<algo>:<hex>" digest; the fetch-resolve key.'
+    required: true
+
+  sources:
+    description: Ordered fetch URLs; firewall-free mirror first, upstream after.
+    multivalued: true
+    required: true
+
+  external:
+    description: True when the part lives off-package (OPC TargetMode="External").
+    range: boolean
+    ifabsent: 'False'
+
+enums:
+
+  GoldenFormatEnum:
+    permissible_values:
+      dss:
+        description: OpenDSS is the authoritative serialization.
+      raw:
+        description: PSS/E RAW is the authoritative serialization.
+      glm:
+        description: GridLAB-D GLM is the authoritative serialization.
+      cim_rdf:
+        description: CIM RDF/XML is the authoritative serialization.
+
+  GoldenDirectionEnum:
+    permissible_values:
+      native_is_golden:
+        description: Native format is the reference; validate the derived CIM going in.
+      cim_is_golden:
+        description: CIM is the reference; validate exports going out.

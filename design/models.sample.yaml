@@ -1,0 +1,20 @@
+# Sample instance conforming to model_manifest.linkml.yaml.
+# The real catalog lives in Powergrid-Models; this is the worked example.
+# Checksums/URLs are placeholders until the Zenodo records are minted.
+
+- id: ieee13
+  family: ieee-test-feeders
+  version: "2024.1"
+  golden_format: cim_rdf
+  golden_direction: native_is_golden
+  feeder_mrid: "_49AD8E07-3BF9-A4E2-CB8F-C3722F837B62"
+  doi: "10.5281/zenodo.XXXXXX"
+  parts:
+    - id: _49ad8e07_3bf9_a4e2_cb8f_c3722f837b62
+      profile: combined
+      content_type: application/rdf+xml
+      filename: ieee13.cimx
+      checksum: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      sources:
+        - https://zenodo.org/records/XXXXXX/files/ieee13.cimx?download=1
+        - https://oedi-data-lake.s3.amazonaws.com/.../ieee13.cimx

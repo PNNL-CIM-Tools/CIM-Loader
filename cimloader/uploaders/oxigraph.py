@@ -69,6 +69,31 @@ class OxigraphUploader(OxigraphConnection):
         post.raise_for_status()
         _log.info("Successfully uploaded %s to Oxigraph", url)
 
+    def upload_part(self, part) -> None:
+        """Upload a BootstrappedPart from an OPC `.cimx` package.
+
+        Dispatches on the part's content_type. External parts
+        (`TargetMode="External"`) are fetched + posted via `upload_from_url`;
+        in-package parts post their bytes directly. `part` is a
+        `cimloader.downloaders.models.BootstrappedPart`.
+        """
+        if part.external_url is not None:
+            self.upload_from_url(part.external_url)
+            return
+
+        if part.data is None:
+            raise ValueError(f"Part {part.id!r} has neither data nor external_url")
+
+        data = prepare_rdf_bytes(part.data, part.content_type, self.base_iri)
+        _log.info("Uploading part %s (%s) to Oxigraph", part.id, part.content_type)
+        resp = requests.post(
+            self.upload_endpoint,
+            data=data,
+            headers={"Content-Type": part.content_type},
+        )
+        resp.raise_for_status()
+        _log.info("Successfully uploaded part %s to Oxigraph", part.id)
+
     def upload_from_graphmodel(self, graph_dict: dict, feeder_mrid: str | None = None) -> None:
         """Upload a CIMantic Graphs GraphModel to Oxigraph."""
         from cimgraph.models import FeederModel
