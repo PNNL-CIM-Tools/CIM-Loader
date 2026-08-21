@@ -43,7 +43,7 @@ It now logs the failing query and re-raises.
 error handling. `configure()` also raises `RuntimeError` for a missing CIM
 profile / namespace instead of calling `_log.exception` outside a handler.
 
-## 2026-08: requires cim-graph >= 0.5.0a9
+## 2026-08: requires cim-graph >= 0.5.0a11
 
 Two fixes land on the cimgraph side and the floor was raised to match:
 
