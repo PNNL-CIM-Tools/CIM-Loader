@@ -217,59 +217,50 @@ the conforming YAML with plain `pyyaml`, so the bare-metal install stays small.
 ## Open items / next steps
 
 1. Create the Zenodo records (one per family); mint concept + version DOIs.
-2. Upload combined RDF + native goldens; record checksums into the consumer `models.yaml`.
-3. ✅ `downloaders/manifest.py` + `fetch.py` + `opc.py` (`read_package`) implemented
-   and unit-tested; `requests`/`pyyaml` promoted to runtime deps.
-4. Move `model_manifest.linkml.yaml` + a real `models.yaml` into the
+2. Upload combined RDF + native goldens; record real checksums into the consumer `models.yaml`.
+3. ✅ `downloaders/manifest.py` + `fetch.py` + `opc.py` (`read_package` + `parse_business_metadata`)
+   implemented and unit-tested; `requests`/`pyyaml` promoted to runtime deps.
+4. ✅ `parse_business_metadata` unblocked — 61970-552 concrete instance received, namespace
+   corrected (`http://iec.ch/TC57/61970-552/ModelDescription/3#`), DCAT/SPDX vocabulary
+   confirmed; `metadata.cimx` syntax fixed; LinkML schema mappings updated.
+5. Move `model_manifest.linkml.yaml` + a real `models.yaml` into the
    Powergrid-Models catalog repo (currently parked in `design/` as the worked example).
-5. Write the Powergrid-Models docker runtime routine (pull → read_package → upload-via-cimloader).
-5. Mirror the SMART-DS subset we actually test from OEDI into a `nrel-smart-ds`
+6. Write the Powergrid-Models docker runtime routine (pull → read_package → upload-via-cimloader).
+7. Mirror the SMART-DS subset we actually test from OEDI into a `nrel-smart-ds`
    Zenodo record; keep the OEDI S3 URL as the upstream `sources[]` pointer.
-6. Mirror the SMART-DS subset we actually test from OEDI into a `nrel-smart-ds`
-   Zenodo record; keep the OEDI S3 URL as the upstream `sources[]` pointer.
-7. Decide EQ/SSH split timing per family (schema already supports it).
-8. **Blocked on team:** a concrete `BusinessMetadata` instance (real 61970-552
-   `Dataset`/`Activity` RDF, namespace prefix) — the *package* bootstrap is fully
-   specified, only the metadata-graph parsing waits on this.
+8. Decide EQ/SSH split timing per family (schema already supports it).
 
 ---
 
 ## For the CIM Metadata Team (IEC 61970-552 / 55X)
 
-**What we're doing and why we need you.** We distribute golden feeder models as
-OPC `.cimx` packages (per 61970-557). Inside each package, the single
-`BusinessProcessMetadata` part is where the model's *provenance* lives — and we
-want that to be a real **61970-552 `Dataset`/`Activity` graph**, not a bespoke
-header. Our package bootstrap (Content_Types → .rels → `dcterms:conformsTo` →
-resolve business rel-types → locate the metadata part) is fully implemented
-against the §4 normative text. The one piece we have **stubbed** is parsing the
-552 graph itself, because we don't yet have a concrete serialized instance.
+**What we're doing.** We distribute golden feeder models as OPC `.cimx` packages
+(per 61970-557). Inside each package, the single `BusinessProcessMetadata` part
+carries the model's provenance as a real **61970-552 `Dataset`/`Activity` graph**.
 
-**The one ask:** a real, serialized 552 metadata instance — even a single model —
-with:
-- the actual namespace prefix/IRI in use (we've been assuming
-  `http://www.ucaiug.org/Metadata#`),
-- a `Dataset`/`GridDataset` with `authority`, `issued`, `version`, and a
-  `contains` profile-stack (EQ/SSH/…),
-- an `Activity` with `agent`/`function`/`generated` so we can record
-  `golden_direction` lineage (was the CIM derived from the native model, or vice
-  versa),
-- the chosen serialization (we default to `application/rdf+xml` per §4.6, but the
-  spec allows any CIM serialization — please confirm).
+**✅ Unblocked (2026-06-18).** The team provided a concrete instance
+(`metadata.cimx`). Key facts confirmed: namespace is
+`http://iec.ch/TC57/61970-552/ModelDescription/3#`; the vocabulary is DCAT +
+SPDX + dcterms (not a bespoke prefix); `cim:BoundaryModel`/`cim:GridDataset`
+carry `profileType` (EQ/TP/OP/SSH/SV); `dcat:Distribution` links to each file
+with `accessURL`, `mediaType`, and `spdx:checksum`; serialization is
+`application/rdf+xml`. Our `parse_business_metadata()` is now fully implemented
+against this shape (see `cimloader/downloaders/opc.py`).
 
-With that, `parse_business_metadata()` (currently a single
-`NotImplementedError`) lights up; nothing else in the pipeline changes.
+**Still open:** we haven't seen an `Activity` triple (agent/function/generated)
+in the instance — this is the `golden_direction` lineage anchor. If the standard
+defines it, please share an example so we can wire it into the parser.
 
 **Forward-looking — LinkML, not Sparx UML.** We've authored our operational
 manifest as a **LinkML schema** (`model_manifest.linkml.yaml`) whose slots are
-SKOS-mapped to the 552 vocabulary (`family`→`md:Dataset.authority`,
-`version`→`md:Dataset.version`, `profile`→`md:GridDataset.contains`, classes
-`class_uri`'d to `md:GridModel`/`md:Distribution`). This is a deliberate bet on
+SKOS-mapped to the confirmed DCAT/SPDX/cim vocabulary (`profile`→`cim:GridDataset.profileType`,
+`content_type`→`dcat:mediaType`, `checksum`→`spdx:checksum`, `sources`→`dcat:accessURL`,
+classes `class_uri`'d to `cim:GridDataset`/`dcat:Distribution`). This is a deliberate bet on
 the effort to move 61970 metadata to LinkML YAML. If/when 552 ships as LinkML,
 our manifest becomes a thin **profile** of the upstream schema — an `import` plus
-a few extra operational slots (`checksum`, `sources`, `golden_direction`) — not a
-migration. We'd welcome aligning our SKOS mappings against whatever you publish so
-the round-trip is exact.
+a few extra operational slots (`sources`, `golden_direction`) — not a migration.
+We'd welcome aligning our SKOS mappings against whatever you publish so the
+round-trip is exact.
 
 ## For the GridAPPS-D Dev Team (replacing the monolithic image)
 

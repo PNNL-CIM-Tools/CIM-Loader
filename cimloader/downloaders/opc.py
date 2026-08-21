@@ -76,17 +76,97 @@ def read_package(cimx_path: str | Path) -> Package:
 
 
 def parse_business_metadata(part: BootstrappedPart) -> dict:
-    """Parse the IEC 61970-552 Dataset/Activity metadata graph.
+    """Parse the IEC 61970-552 metadata graph from a BusinessMetadata package part.
 
-    STUB: blocked on a concrete BusinessMetadata instance from the team. The
-    OPC package bootstrap (above) is fully specified by 557 §4, but the internal
-    serialization of the 552 metadata graph (exact Dataset/Activity RDF shape,
-    namespace prefix) is business-process-defined and not yet pinned down.
+    Returns a dict with:
+      full_model_uuid  — rdf:about of md:FullModel (the root dataset identity)
+      distributions    — list of dicts per dcat:Distribution:
+                           uuid, access_url, byte_size, media_type, checksum,
+                           conforms_to (list of profile IRIs), dataset_uuid
+      datasets         — list of dicts per cim:BoundaryModel / cim:GridDataset:
+                           uuid, title, profile_type, issued, defines_uuid,
+                           contains (list of child dataset UUIDs)
+
+    Namespace URIs follow the concrete instance (IEC 61970-552 ModelDescription/3):
+      md:  http://iec.ch/TC57/61970-552/ModelDescription/3#
+      cim: http://cim.ucaiug.io/ns#
+      dcat: http://www.w3.org/ns/dcat#
+      dcterms: http://purl.org/dc/terms/
+      spdx: http://spdx.org/rdf/terms#
     """
-    raise NotImplementedError(
-        "parse_business_metadata: awaiting a concrete IEC 61970-552 BusinessMetadata "
-        "instance to pin the Dataset/Activity RDF shape. See MODEL_PROVENANCE.md."
-    )
+    data = part.data
+    if data is None:
+        raise ValueError("parse_business_metadata: part has no data (external parts not supported)")
+
+    _NS = {
+        "rdf":     "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        "md":      "http://iec.ch/TC57/61970-552/ModelDescription/3#",
+        "cim":     "http://cim.ucaiug.io/ns#",
+        "dcat":    "http://www.w3.org/ns/dcat#",
+        "dcterms": "http://purl.org/dc/terms/",
+        "spdx":    "http://spdx.org/rdf/terms#",
+    }
+
+    def _ns(prefix: str, local: str) -> str:
+        return f"{{{_NS[prefix]}}}{local}"
+
+    def _about(el) -> str:
+        return el.attrib.get(_ns("rdf", "about"), "")
+
+    def _resource(el) -> str:
+        return el.attrib.get(_ns("rdf", "resource"), "")
+
+    root = ET.fromstring(data)
+
+    full_model_uuid = None
+    distributions = []
+    datasets = []
+
+    for el in root:
+        tag = el.tag
+
+        if tag == _ns("md", "FullModel"):
+            full_model_uuid = _about(el)
+
+        elif tag == _ns("dcat", "Distribution"):
+            dist: dict = {"uuid": _about(el), "conforms_to": []}
+            for child in el:
+                ctag = child.tag
+                if ctag == _ns("dcat", "Distribution.accessURL"):
+                    dist["access_url"] = (child.text or "").strip()
+                elif ctag == _ns("dcat", "Distribution.byteSize"):
+                    dist["byte_size"] = (child.text or "").strip()
+                elif ctag == _ns("dcat", "Distribution.mediaType"):
+                    dist["media_type"] = (child.text or "").strip()
+                elif ctag == _ns("spdx", "Distribution.checksum"):
+                    dist["checksum"] = (child.text or "").strip()
+                elif ctag == _ns("dcterms", "Distribution.conformsTo"):
+                    dist["conforms_to"].append(_resource(child))
+                elif ctag == _ns("dcat", "Distribution.DataSet"):
+                    dist["dataset_uuid"] = _resource(child)
+            distributions.append(dist)
+
+        elif tag in (_ns("cim", "BoundaryModel"), _ns("cim", "GridDataset")):
+            ds: dict = {"uuid": _about(el), "contains": []}
+            for child in el:
+                ctag = child.tag
+                if ctag == _ns("dcterms", "MetaThing.title"):
+                    ds["title"] = (child.text or "").strip()
+                elif ctag == _ns("dcterms", "Distribution.issued"):
+                    ds["issued"] = (child.text or "").strip()
+                elif ctag == _ns("cim", "GridDataset.profileType"):
+                    ds["profile_type"] = (child.text or "").strip()
+                elif ctag == _ns("cim", "BoundaryModel.Defines"):
+                    ds["defines_uuid"] = _resource(child)
+                elif ctag == _ns("cim", "GridDataset.Contains"):
+                    ds["contains"].append(_resource(child))
+            datasets.append(ds)
+
+    return {
+        "full_model_uuid": full_model_uuid,
+        "distributions": distributions,
+        "datasets": datasets,
+    }
 
 
 # --- internals -------------------------------------------------------------

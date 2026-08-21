@@ -155,7 +155,7 @@ source = FeederModel(container=feeder, connection=blazegraph)
 # Upload to Neptune
 os.environ['CIMG_URL'] = 'https://my-cluster.cluster-xyz.us-east-1.neptune.amazonaws.com:8182/sparql'
 neptune = NeptuneUploader()
-neptune.upload_from_graphmodel(source.graph, feeder_mrid='feeder-123')
+neptune.upload_from_graphmodel(source.graph)
 ```
 
 ## Current Limitations

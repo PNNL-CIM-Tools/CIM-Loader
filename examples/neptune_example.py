@@ -205,7 +205,7 @@ def migration_example():
         print("\n2. Uploading to Neptune...")
         # Neptune URL should already be set
         neptune = NeptuneUploader()
-        neptune.upload_from_graphmodel(source.graph, feeder_mrid=feeder_mrid)
+        neptune.upload_from_graphmodel(source.graph)
 
         print("   ✓ Migration completed!")
         return True

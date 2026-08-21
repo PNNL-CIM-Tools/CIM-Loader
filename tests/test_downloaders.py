@@ -120,10 +120,52 @@ def test_read_package_missing_content_types_fails_fast(tmp_path):
         read_package(path)
 
 
-def test_parse_business_metadata_is_stubbed(cimx):
-    pkg = read_package(cimx)
-    with pytest.raises(NotImplementedError, match="61970-552"):
-        parse_business_metadata(pkg.business_metadata)
+BUSINESS_METADATA_XML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+  xmlns:cim="http://cim.ucaiug.io/ns#"
+  xmlns:md="http://iec.ch/TC57/61970-552/ModelDescription/3#"
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:dcat="http://www.w3.org/ns/dcat#"
+  xmlns:dcterms="http://purl.org/dc/terms/"
+  xmlns:spdx="http://spdx.org/rdf/terms#"
+>
+  <md:FullModel rdf:about="urn:uuid:D8425A0E-02C6-4D47-B75E-19B6C7197D5F" />
+  <dcat:Distribution rdf:about="urn:uuid:6D019CF0-CB92-43A2-A721-8A5EAFCCDD1B">
+    <dcat:Distribution.accessURL>\\contents\\MicroGridTestConfiguration_EQ_BD.xml</dcat:Distribution.accessURL>
+    <dcat:Distribution.mediaType>rdf+xml</dcat:Distribution.mediaType>
+    <spdx:Distribution.checksum>C6BF1ED9</spdx:Distribution.checksum>
+    <dcterms:Distribution.conformsTo rdf:resource="http://entsoe.eu/CIM/EquipmentBoundary/3/1"/>
+    <dcat:Distribution.DataSet rdf:resource="urn:uuid:7C390692-2DB9-4FAA-8AFB-1A67CE40C846"/>
+  </dcat:Distribution>
+  <cim:BoundaryModel rdf:about="urn:uuid:7C390692-2DB9-4FAA-8AFB-1A67CE40C846">
+    <dcterms:MetaThing.title>Equipment frame group</dcterms:MetaThing.title>
+    <cim:GridDataset.profileType>EQ</cim:GridDataset.profileType>
+  </cim:BoundaryModel>
+</rdf:RDF>
+"""
+
+
+def test_parse_business_metadata_returns_structure(tmp_path):
+    from cimloader.downloaders.models import BootstrappedPart
+    part = BootstrappedPart(
+        id="file2",
+        content_type="application/rdf+xml",
+        role="http://cim-type.ucaiug.io/package/BusinessProcessMetadata",
+        data=BUSINESS_METADATA_XML.encode(),
+    )
+    result = parse_business_metadata(part)
+    assert result["full_model_uuid"] == "urn:uuid:D8425A0E-02C6-4D47-B75E-19B6C7197D5F"
+    assert len(result["distributions"]) == 1
+    dist = result["distributions"][0]
+    assert dist["media_type"] == "rdf+xml"
+    assert dist["checksum"] == "C6BF1ED9"
+    assert "http://entsoe.eu/CIM/EquipmentBoundary/3/1" in dist["conforms_to"]
+    assert dist["dataset_uuid"] == "urn:uuid:7C390692-2DB9-4FAA-8AFB-1A67CE40C846"
+    assert len(result["datasets"]) == 1
+    ds = result["datasets"][0]
+    assert ds["profile_type"] == "EQ"
+    assert ds["title"] == "Equipment frame group"
 
 
 # --- manifest --------------------------------------------------------------

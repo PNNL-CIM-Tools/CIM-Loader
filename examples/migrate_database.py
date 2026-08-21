@@ -57,10 +57,7 @@ def migrate_blazegraph_to_neo4j(feeder_mrid: str):
     neo4j.drop_all()  # Clear existing data
     neo4j.configure()  # Setup n10s
 
-    neo4j.upload_from_graphmodel(
-        graph_dict=source_network.graph,
-        feeder_mrid=feeder_mrid
-    )
+    neo4j.upload_from_graphmodel(graph_dict=source_network.graph)
 
     print(f"   ✓ Migration complete!")
 
@@ -94,10 +91,7 @@ def migrate_blazegraph_to_oxigraph(feeder_mrid: str):
     oxigraph = OxigraphUploader()
     oxigraph.drop_all()  # Clear existing data
 
-    oxigraph.upload_from_graphmodel(
-        graph_dict=source_network.graph,
-        feeder_mrid=feeder_mrid
-    )
+    oxigraph.upload_from_graphmodel(graph_dict=source_network.graph)
 
     print(f"   ✓ Migration complete!")
 
@@ -152,10 +146,7 @@ def merge_multiple_feeders(feeder_mrids: list[str], target_mrid: str = None):
     neo4j.drop_all()
     neo4j.configure()
 
-    neo4j.upload_from_graphmodel(
-        graph_dict=merged_graph,
-        feeder_mrid=target_mrid or 'merged-feeders'
-    )
+    neo4j.upload_from_graphmodel(graph_dict=merged_graph)
 
     print(f"   ✓ Merge and upload complete!")
 

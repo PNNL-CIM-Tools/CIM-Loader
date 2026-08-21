@@ -1,6 +1,6 @@
 import logging
 
-from cimgraph.databases import get_cim_profile, get_iec61970_301, get_namespace, get_url
+from cimgraph.databases import get_cim_profile, get_iec61970_552, get_namespace, get_url
 from cimloader.databases import ConnectionInterface, QueryResponse
 from cimloader.databases._config_utils import clear_cim_config_cache
 from SPARQLWrapper import JSON, POST, SPARQLWrapper
@@ -16,7 +16,7 @@ class BlazegraphConnection(ConnectionInterface):
         self.sparql_obj = None
         self.url = get_url()
         self.namespace = get_namespace()
-        self.iec61970_301 = get_iec61970_301()
+        self.iec61970_552 = get_iec61970_552()
         self.cim_profile, self.cim = get_cim_profile()
 
     def connect(self):

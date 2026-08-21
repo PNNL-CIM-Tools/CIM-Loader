@@ -304,8 +304,10 @@ class TestNeo4jConfiguration:
         neo4j_connection.drop_all()
         neo4j_connection.configure()
 
-        # Should be able to query
-        query = "MATCH (n) RETURN count(n) AS count"
+        # configure() creates an n10s _GraphConfig node, so count all nodes
+        # would be 1 here. Assert on :Resource -- the label n10s gives imported
+        # RDF -- which is what drop_all() is meant to clear.
+        query = "MATCH (n:Resource) RETURN count(n) AS count"
         records, _, _ = neo4j_connection.execute(query)
         assert records[0]['count'] == 0
 

@@ -33,7 +33,8 @@ class Neo4jUploader(Neo4jConnection):
         super().__init__()
         self.container = container
         self.base_iri = base_iri
-        self.connect()
+        # No connect() here: execute() connects lazily, so constructing an
+        # uploader never does I/O. Matches the other four uploaders.
 
     def upload_from_file(self, filepath: str, filename: str):
         """Upload an RDF file to Neo4j via the n10s plugin.
@@ -66,23 +67,24 @@ class Neo4jUploader(Neo4jConnection):
         data = prepare_rdf_bytes(resp.content, content_type, self.base_iri)
         return self._upload_bytes(data, filename, content_type)
 
-    def upload_from_graphmodel(self, graph_dict: dict, feeder_mrid: str | None = None):
-        """Upload a CIMantic Graphs GraphModel to Neo4j."""
-        from cimgraph.models import FeederModel
+    def upload_from_graphmodel(self, graph_dict: dict) -> None:
+        """Upload a CIMantic Graphs graph dict to Neo4j via the n10s plugin.
 
-        if self.cim is None:
-            raise RuntimeError(
-                "CIM profile not configured. Set CIMG_CIM_PROFILE environment variable."
-            )
+        Accepts the ``graph`` of any GraphModel subclass (FeederModel,
+        BusBranchModel, NodeBreakerModel) -- only the objects matter.
 
-        if feeder_mrid:
-            container = self.cim.Feeder(mRID=feeder_mrid)
-        else:
-            import uuid
-            container = self.cim.Feeder(mRID=str(uuid.uuid4()))
+        Objects are serialized to RDF/XML and ingested with
+        n10s.rdf.import.inline, so nothing needs to be reachable from the
+        Neo4j server's filesystem. Requires configure() to have been run.
+        """
+        # cimgraph's Neo4jConnection owns the object-graph writeback: it holds
+        # the RDF serialization that depends on the CIM data profile. This
+        # uploader owns bulk file/URL ingest. Delegating keeps one
+        # implementation instead of two that must stay in sync.
+        from cimgraph.databases import Neo4jConnection as CimgraphNeo4jConnection
 
         _log.info("Uploading graph with %d object types to Neo4j", len(graph_dict))
-        FeederModel(container=container, connection=self, graph=graph_dict)
+        CimgraphNeo4jConnection().upload(graph_dict)
 
     def _upload_bytes(self, data: bytes, filename: str, content_type: str):
         """Stage `data` somewhere n10s can read and call fetch()."""

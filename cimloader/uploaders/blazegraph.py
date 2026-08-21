@@ -3,6 +3,7 @@ import logging
 import requests
 
 from cimloader._base_iri import DEFAULT_BASE_IRI, prepare_rdf_bytes
+from cimloader.uploaders._graphmodel import upload_graph_via_sparql
 from cimloader._formats import content_type_from_filename, content_type_from_url
 from cimloader.databases import BlazegraphConnection
 
@@ -46,13 +47,9 @@ class BlazegraphUploader(BlazegraphConnection):
         post.raise_for_status()
 
     def upload_from_graphmodel(self, graph_dict: dict) -> None:
-        """Upload a CIMantic Graphs GraphModel to Blazegraph."""
-        from cimgraph.models import FeederModel
+        """Upload a CIMantic Graphs graph dict to Blazegraph.
 
-        if self.cim is None:
-            raise RuntimeError(
-                "CIM profile not configured. Set CIMG_CIM_PROFILE environment variable."
-            )
-
-        _log.info("Uploading graph with %d object types to Blazegraph", len(graph_dict))
-        FeederModel(container=None, connection=self, graph=graph_dict)
+        Accepts the ``graph`` of any GraphModel subclass (FeederModel,
+        BusBranchModel, NodeBreakerModel) -- only the objects matter.
+        """
+        upload_graph_via_sparql(self, graph_dict, "Blazegraph")

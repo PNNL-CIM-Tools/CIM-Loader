@@ -78,7 +78,7 @@ source = FeederModel(container=feeder, connection=blazegraph)
 # Upload to Neo4j
 os.environ['CIMG_URL'] = 'neo4j://localhost:7687'
 neo4j = Neo4jUploader()
-neo4j.upload_from_graphmodel(source.graph, feeder_mrid='feeder-123')
+neo4j.upload_from_graphmodel(source.graph)
 ```
 
 See the `examples/` directory for complete migration and merging examples.

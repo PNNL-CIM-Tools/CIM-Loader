@@ -17,8 +17,11 @@ description: >-
 prefixes:
   linkml: https://w3id.org/linkml/
   manifest: https://gridappsd.org/cimhub/model-manifest/
-  md: http://www.ucaiug.org/Metadata#       # IEC 61970-552 metadata profile
+  md: http://iec.ch/TC57/61970-552/ModelDescription/3#   # IEC 61970-552 metadata profile
+  cim: http://cim.ucaiug.io/ns#
+  dcat: http://www.w3.org/ns/dcat#
   dcterms: http://purl.org/dc/terms/
+  spdx: http://spdx.org/rdf/terms#
 
 default_prefix: manifest
 default_range: string
@@ -30,9 +33,9 @@ classes:
 
   ModelEntry:
     description: One feeder model in the catalog.
-    class_uri: md:GridModel
+    class_uri: cim:GridDataset
     exact_mappings:
-      - md:GridModel
+      - cim:GridDataset
     slots:
       - id
       - family
@@ -46,9 +49,11 @@ classes:
   Part:
     description: >-
       One physical artifact in a model's distribution. Maps to an OPC package
-      part (IEC 61970-557). Identity is `id` + `checksum`, never `filename`
-      (557 §4.5: filenames carry no meaning).
-    class_uri: md:Distribution
+      part (IEC 61970-557) and to dcat:Distribution. Identity is `id` +
+      `checksum`, never `filename` (557 §4.5: filenames carry no meaning).
+    class_uri: dcat:Distribution
+    exact_mappings:
+      - dcat:Distribution
     slots:
       - id
       - profile
@@ -66,15 +71,15 @@ slots:
     required: true
 
   family:
-    description: Provenance grouping; one family = one Zenodo record / DOI. Maps to the source authority.
+    description: Provenance grouping; one family = one Zenodo record / DOI. Maps to the publisher authority.
     exact_mappings:
-      - md:Dataset.authority
+      - dcterms:publisher
     required: true
 
   version:
     description: Catalog version of the model.
     exact_mappings:
-      - md:Dataset.version
+      - dcterms:hasVersion
 
   golden_format:
     description: Which serialization is authoritative for this model.
@@ -100,24 +105,32 @@ slots:
     required: true
 
   profile:
-    description: CGMES-style profile of this part (combined, EQ, SSH, SV, TP, ...).
-    related_mappings:
-      - md:GridDataset.contains
+    description: CGMES-style profile of this part (combined, EQ, SSH, SV, TP, OP, ...). Maps to cim:GridDataset.profileType.
+    exact_mappings:
+      - cim:GridDataset.profileType
     ifabsent: string(combined)
 
   content_type:
-    description: IANA/IETF-registered media type of the part (557 §4.6).
+    description: IANA/IETF-registered media type of the part (557 §4.6). Maps to dcat:mediaType.
+    exact_mappings:
+      - dcat:mediaType
     ifabsent: string(application/rdf+xml)
 
   filename:
-    description: Convenience filename only — NOT identity (557 §4.5).
+    description: Convenience filename only — NOT identity (557 §4.5). Maps to dcat:accessURL when it is a path.
+    close_mappings:
+      - dcat:accessURL
 
   checksum:
-    description: '"<algo>:<hex>" digest; the fetch-resolve key.'
+    description: '"<algo>:<hex>" digest; the fetch-resolve key. Maps to spdx:checksum.'
+    exact_mappings:
+      - spdx:checksum
     required: true
 
   sources:
-    description: Ordered fetch URLs; firewall-free mirror first, upstream after.
+    description: Ordered fetch URLs; firewall-free mirror first, upstream after. Maps to dcat:accessURL.
+    exact_mappings:
+      - dcat:accessURL
     multivalued: true
     required: true
 
@@ -132,12 +145,16 @@ enums:
     permissible_values:
       dss:
         description: OpenDSS is the authoritative serialization.
+        meaning: dcterms:format
       raw:
         description: PSS/E RAW is the authoritative serialization.
+        meaning: dcterms:format
       glm:
         description: GridLAB-D GLM is the authoritative serialization.
+        meaning: dcterms:format
       cim_rdf:
-        description: CIM RDF/XML is the authoritative serialization.
+        description: CIM RDF/XML (application/rdf+xml) is the authoritative serialization.
+        meaning: dcat:mediaType
 
   GoldenDirectionEnum:
     permissible_values:

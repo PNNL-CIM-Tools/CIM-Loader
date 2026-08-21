@@ -1,14 +1,25 @@
 [project]
 name = "cim-loader"
-version = "0.0.2a0"
+version = "0.2.0a0"
 description = "CIM Database Uploader & Downloader"
 authors = [
     {name = "A. Anderson", email = "19935503+AAndersn@users.noreply.github.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.10"
+license = {text = "BSD-3-Clause"}
+keywords = ["cim", "power-systems", "graph", "sparql", "neo4j", "blazegraph"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
-    "cim-graph>=0.4.3a1",
+    "cim-graph>=0.5.0a10",
     "requests>=2.31.0",
     "pyyaml>=6.0",
 ]
@@ -36,6 +47,11 @@ test = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[project.urls]
+Homepage = "https://github.com/PNNL-CIM-Tools/CIM-Loader"
+Repository = "https://github.com/PNNL-CIM-Tools/CIM-Loader"
+Issues = "https://github.com/PNNL-CIM-Tools/CIM-Loader/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["cimloader"]

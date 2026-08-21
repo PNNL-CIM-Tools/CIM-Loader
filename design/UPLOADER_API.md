@@ -8,7 +8,7 @@ from the file extension (or the URL path extension for `upload_from_url`).
 ```python
 uploader.upload_from_file(filepath: str, filename: str) -> None
 uploader.upload_from_url(url: str) -> None
-uploader.upload_from_graphmodel(graph_dict: dict, feeder_mrid: str | None = None) -> None
+uploader.upload_from_graphmodel(graph_dict: dict) -> None
 ```
 
 Uploaders inherit from their corresponding `Connection` class, so they also
@@ -109,7 +109,7 @@ source = FeederModel(
 
 target = Neo4jUploader(container='neo4j_cim_loader')
 target.configure()
-target.upload_from_graphmodel(source.graph, feeder_mrid='feeder-123')
+target.upload_from_graphmodel(source.graph)
 ```
 
 Merging multiple feeders: chain `FeederModel(graph=previous.graph)` calls,
@@ -134,4 +134,7 @@ then upload the final graph once.
 - HTTP / n10s / `docker cp` failures → `requests.HTTPError`, Neo4j driver
   exceptions, or `subprocess.CalledProcessError` bubble up — the uploader
   does not catch them.
-- Missing CIM profile when calling `upload_from_graphmodel` → `RuntimeError`.
+- `upload_from_graphmodel` accepts the `graph` dict of any `GraphModel`
+  subclass (`FeederModel`, `BusBranchModel`, `NodeBreakerModel`). SPARQL
+  backends emit `INSERT DATA` per object; Neo4j delegates to cimgraph's
+  n10s-based `Neo4jConnection.upload()`.

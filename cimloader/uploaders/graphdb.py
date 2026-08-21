@@ -12,6 +12,7 @@ import logging
 import requests
 
 from cimloader._base_iri import DEFAULT_BASE_IRI, prepare_rdf_bytes
+from cimloader.uploaders._graphmodel import upload_graph_via_sparql
 from cimloader._formats import content_type_from_filename, content_type_from_url
 from cimloader.databases import GraphDBConnection
 
@@ -61,20 +62,10 @@ class GraphDBUploader(GraphDBConnection):
         post.raise_for_status()
         _log.info("Successfully uploaded %s to GraphDB", url)
 
-    def upload_from_graphmodel(self, graph_dict: dict, feeder_mrid: str | None = None) -> None:
-        """Upload a CIMantic Graphs GraphModel to GraphDB."""
-        from cimgraph.models import FeederModel
+    def upload_from_graphmodel(self, graph_dict: dict) -> None:
+        """Upload a CIMantic Graphs graph dict to GraphDB.
 
-        if self.cim is None:
-            raise RuntimeError(
-                "CIM profile not configured. Set CIMG_CIM_PROFILE environment variable."
-            )
-
-        if feeder_mrid:
-            container = self.cim.Feeder(mRID=feeder_mrid)
-        else:
-            import uuid
-            container = self.cim.Feeder(mRID=str(uuid.uuid4()))
-
-        _log.info("Uploading graph with %d object types to GraphDB", len(graph_dict))
-        FeederModel(container=container, connection=self, graph=graph_dict)
+        Accepts the ``graph`` of any GraphModel subclass (FeederModel,
+        BusBranchModel, NodeBreakerModel) -- only the objects matter.
+        """
+        upload_graph_via_sparql(self, graph_dict, "GraphDB")

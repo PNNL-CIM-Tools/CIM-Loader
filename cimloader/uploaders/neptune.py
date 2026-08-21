@@ -12,6 +12,7 @@ import logging
 import requests
 
 from cimloader._base_iri import DEFAULT_BASE_IRI, prepare_rdf_bytes
+from cimloader.uploaders._graphmodel import upload_graph_via_sparql
 from cimloader._formats import content_type_from_filename, content_type_from_url
 from cimloader.databases import NeptuneConnection
 
@@ -51,23 +52,13 @@ class NeptuneUploader(NeptuneConnection):
         data = prepare_rdf_bytes(resp.content, content_type, self.base_iri)
         self._post(data, url, content_type)
 
-    def upload_from_graphmodel(self, graph_dict: dict, feeder_mrid: str | None = None) -> None:
-        """Upload a CIMantic Graphs GraphModel to Neptune."""
-        from cimgraph.models import FeederModel
+    def upload_from_graphmodel(self, graph_dict: dict) -> None:
+        """Upload a CIMantic Graphs graph dict to Neptune.
 
-        if self.cim is None:
-            raise RuntimeError(
-                "CIM profile not configured. Set CIMG_CIM_PROFILE environment variable."
-            )
-
-        if feeder_mrid:
-            container = self.cim.Feeder(mRID=feeder_mrid)
-        else:
-            import uuid
-            container = self.cim.Feeder(mRID=str(uuid.uuid4()))
-
-        _log.info("Uploading graph with %d object types to Neptune", len(graph_dict))
-        FeederModel(container=container, connection=self, graph=graph_dict)
+        Accepts the ``graph`` of any GraphModel subclass (FeederModel,
+        BusBranchModel, NodeBreakerModel) -- only the objects matter.
+        """
+        upload_graph_via_sparql(self, graph_dict, "Neptune")
 
     def _post(self, data: bytes, source: str, content_type: str) -> None:
         if self.use_iam_auth:

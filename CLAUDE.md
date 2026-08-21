@@ -54,7 +54,8 @@ Layered:
 
 1. **`cimloader/databases/`** — Connection classes. All implement the
    `ConnectionInterface` ABC (`connect`, `disconnect`, `execute`). One file
-   per database: `blazegraph.py`, `neo4j.py`, `oxigraph.py`, `neptune.py`.
+   per database: `blazegraph.py`, `neo4j.py`, `oxigraph.py`, `neptune.py`,
+   `graphdb.py`.
    Base class lives in `_base.py`; shared cimgraph-cache-clearing helper in
    `_config_utils.py`.
 
@@ -62,11 +63,14 @@ Layered:
    class via `super().__init__()`. Public API on every uploader:
    - `upload_from_file(filepath, filename)` — auto-detects RDF format from
      the extension via `cimloader._formats.content_type_from_filename`.
-   - `upload_from_graphmodel(graph_dict, feeder_mrid=None)` — upload from a
+   - `upload_from_graphmodel(graph_dict)` — upload from a
      CIMantic Graphs `GraphModel.graph` dict.
 
-3. **`cimloader/downloaders/`** — Currently empty. Use connection
-   `execute()` for ad-hoc queries.
+3. **`cimloader/downloaders/`** — Model-manifest driven fetching:
+   `models.py` (dataclasses), `manifest.py` (`load_manifest`, `find`),
+   `fetch.py` (`fetch_part`, `fetch_model`), `opc.py` (`read_package`,
+   `parse_business_metadata`). Use connection `execute()` for ad-hoc
+   queries.
 
 4. **`cimloader/batch_handlers/`** — Placeholder for multi-profile CIM
    package workflows (EQ + TP + SSH append). Not implemented yet.
@@ -139,7 +143,7 @@ source = FeederModel(
 )
 target = Neo4jUploader(container='neo4j_cim_loader')
 target.configure()
-target.upload_from_graphmodel(source.graph, feeder_mrid='feeder-123')
+target.upload_from_graphmodel(source.graph)
 ```
 
 ### Run a SPARQL query
