@@ -170,8 +170,9 @@ Docs / packaging:
   pre-rewrite package that still depended on `mysql-connector-python` and
   `cim-graph<0.2.0`). Publishing `0.0.x` would have been a version regression.
   Released as **`0.2.0a0`** — ahead of `0.1.3a0`, with the minor bump marking
-  the archive/rewrite break. cim-graph went `0.5.0a9` -> **`0.5.0a10`**
-  because `0.5.0a9` was already on PyPI. Clear stale `dist/` before building.
+  the archive/rewrite break. cim-graph shipped as **`0.5.0a11`** (`0.5.0a9`
+  was already on PyPI; `0.5.0a10` was skipped and never published). Clear
+  stale `dist/` before building.
 - `pyproject.toml` has no `[project.urls]`, `license`, or classifiers — worth
   adding for a public release.
 - Add a MIGRATION.md entry for the `upload_from_graphmodel` and `execute()`
