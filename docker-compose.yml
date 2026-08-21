@@ -1,5 +1,3 @@
-version: '2'
-
 services:
 
   blazegraph:
@@ -33,26 +31,6 @@ services:
       - ./docker/neo4j/data:/data
       - ./docker/neo4j/plugins:/plugins
 
-
-  graphdb:
-    image: ontotext/graphdb:10.7.3
-    container_name: graphdb_cim_loader
-    ports:
-      - 7200:7200
-    volumes:
-      - ./docker/graphdb:/opt/graphdb/home
-
-  mysql:
-    image: mysql:8.1.0
-    container_name: mysql_json_cim_loader
-    ports:
-      - 3306:3306
-    environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_PORT: 3306
-    volumes:
-      - ./docker/mysql:/var/lib/mysql
-
   oxigraph:
     image: ghcr.io/oxigraph/oxigraph:latest
     container_name: oxigraph_cim_loader
@@ -61,3 +39,11 @@ services:
     volumes:
       - ./docker/oxigraph:/data
     command: serve --location /data --bind 0.0.0.0:7878
+
+  graphdb:
+    image: ontotext/graphdb:11.3.2
+    container_name: graphdb_cim_loader
+    ports:
+      - 7200:7200
+    volumes:
+      - ./docker/graphdb:/opt/graphdb/home

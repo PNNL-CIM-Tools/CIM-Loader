@@ -1,172 +1,164 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
 ## Project Overview
 
-CIM-Loader is a Python library for uploading/downloading CIM (Common Information Model) files to various databases and converting between CIM formats (XML, TTL). It's designed for power grid modeling and supports multiple graph databases and SPARQL endpoints.
+CIM-Loader is a Python library for uploading CIM (Common Information Model)
+files into various graph databases / SPARQL endpoints, and for moving CIM
+data between them. It's designed for power grid modeling.
 
-**Key dependency:** This project heavily relies on `cim-graph` (separate package) for CIM profile definitions, namespace configuration, and environment variable management via cached functions like `get_url()`, `get_namespace()`, `get_cim_profile()`, etc.
+**Key dependency:** `cim-graph` — provides CIM profile definitions, namespace
+configuration, and env-variable-backed getters like `get_url()`,
+`get_namespace()`, `get_cim_profile()`.
 
 ## Development Setup
 
-### Installation
 ```bash
-# Install for development (editable mode)
+# Editable install for development
 git clone https://github.com/PNNL-CIM-Tools/CIM-Loader.git
 cd CIM-Loader
-pip install -e .
-
-# Or from PyPI
-pip install cim-loader
-```
-
-### Environment Setup
-This project uses uv for fast dependency management:
-```bash
-# Install uv if you don't have it
-pip install uv
-
-# Install dependencies
-uv pip install -e .
-
-# Install with dev dependencies
 uv pip install -e ".[dev]"
 ```
 
-Python version: >=3.10
+Python: >= 3.10. This project uses `uv`.
 
 ### Running Tests
-Tests are Jupyter notebooks in the `tests/` directory:
-- `tests/blazegraph_tester.ipynb` - Blazegraph upload/download tests
-- `tests/neo4j_tester.ipynb` - Neo4j upload/download tests
-- `tests/mysql_test.ipynb` - MySQL tests
-- Test models are in `tests/test_models/`
 
-Run test notebooks using Jupyter:
-```bash
-jupyter notebook tests/
-```
+Tests are pytest integration tests that hit real databases in Docker:
 
-### Docker Services
-Start database services for testing:
 ```bash
 docker-compose up -d
+pytest tests/ -v
+# or per-database:
+pytest tests/test_blazegraph.py -v
+pytest tests/test_neo4j.py -v
+pytest tests/test_oxigraph.py -v
+pytest tests/test_neptune.py -v
+```
 
-# Services available:
+Test models live in `tests/test_models/`.
+
+### Docker Services
+
+```bash
+docker-compose up -d
 # - Blazegraph: http://localhost:8889
-# - Neo4j: http://localhost:7474 (bolt://localhost:7687)
-# - GraphDB: http://localhost:7200
-# - MySQL: localhost:3306
-# - Oxigraph: http://localhost:7878
+# - Neo4j:      http://localhost:7474  (bolt://localhost:7687)
+# - Oxigraph:   http://localhost:7878
 ```
 
 ## Architecture
 
-### Core Design Pattern
-The codebase follows a layered architecture:
+Layered:
 
-1. **Connection Layer** (`cimloader/databases/`): Implements `ConnectionInterface` base class
-   - Each database has a connection class (e.g., `BlazegraphConnection`, `Neo4jConnection`)
-   - Manages connection lifecycle: `connect()`, `disconnect()`, `execute(query)`
-   - Uses environment variables from `cim-graph` for configuration
+1. **`cimloader/databases/`** — Connection classes. All implement the
+   `ConnectionInterface` ABC (`connect`, `disconnect`, `execute`). One file
+   per database: `blazegraph.py`, `neo4j.py`, `oxigraph.py`, `neptune.py`,
+   `graphdb.py`.
+   Base class lives in `_base.py`; shared cimgraph-cache-clearing helper in
+   `_config_utils.py`.
 
-2. **Uploader Layer** (`cimloader/uploaders/`): Inherits from corresponding connection class
-   - Implements database-specific upload methods
-   - Methods: `upload_from_file()`, `upload_from_xml()`, `upload_from_url()`
-   - Handles format conversion (XML, TTL, RDF/XML)
+2. **`cimloader/uploaders/`** — Each uploader inherits from its Connection
+   class via `super().__init__()`. Public API on every uploader:
+   - `upload_from_file(filepath, filename)` — auto-detects RDF format from
+     the extension via `cimloader._formats.content_type_from_filename`.
+   - `upload_from_graphmodel(graph_dict)` — upload from a
+     CIMantic Graphs `GraphModel.graph` dict.
 
-3. **Downloader Layer** (`cimloader/downloaders/`): Database-specific download implementations
-   - Queries and exports CIM data from databases
+3. **`cimloader/downloaders/`** — Model-manifest driven fetching:
+   `models.py` (dataclasses), `manifest.py` (`load_manifest`, `find`),
+   `fetch.py` (`fetch_part`, `fetch_model`), `opc.py` (`read_package`,
+   `parse_business_metadata`). Use connection `execute()` for ad-hoc
+   queries.
 
-4. **Batch Handlers** (`cimloader/batch_handlers/`): Orchestrates multi-step workflows
-   - Example: `naerm_to_neo4j.py` - downloads from NAERM API, converts DSS to CIM, uploads to Neo4j
-   - Combines multiple components for complex ETL pipelines
+4. **`cimloader/batch_handlers/`** — Placeholder for multi-profile CIM
+   package workflows (EQ + TP + SSH append). Not implemented yet.
+
+5. **`archive/`** — Frozen snapshots of legacy code (MySQL, GraphDB stubs,
+   NAERM). Not imported by the active package. See each subfolder's README.
+
+6. **`design/`** — Internal design docs: `STYLE_GUIDE.md`, `MIGRATION.md`,
+   `UPLOADER_API.md`, `TODO.md`. Future Claude prompts go here too.
 
 ### Environment Variable Pattern
-All database connections use `cim-graph` cached functions for configuration:
-```python
-from cimgraph.databases import get_url, get_namespace, get_cim_profile, get_username, get_password
 
-# Pattern: Always clear cache in __init__ before retrieving values
-get_url.cache_clear()
-get_namespace.cache_clear()
-# ... then retrieve
+All connections clear cimgraph's `@lru_cache`d getters in `__init__`, then
+read them:
+
+```python
+from cimloader.databases._config_utils import clear_cim_config_cache
+from cimgraph.databases import get_url, get_namespace
+
+clear_cim_config_cache()
 self.url = get_url()
 self.namespace = get_namespace()
 ```
 
-This allows configuration via environment variables or programmatic override.
+This lets callers override config by setting env vars before instantiation.
 
 ### Database-Specific Notes
 
-**Blazegraph**: SPARQL endpoint, uses `SPARQLWrapper`
-- Upload uses `curl` subprocess calls
-- Connection URL format: `http://localhost:8889/bigdata/namespace/kb/sparql`
+**Blazegraph** — SPARQL endpoint via `SPARQLWrapper`. Upload via `curl`
+POST. URL: `http://localhost:8889/bigdata/namespace/kb/sparql`.
 
-**Oxigraph**: Lightweight RDF triplestore with SPARQL 1.1
-- Supports RDF/XML, Turtle, N-Triples, N-Quads formats
-- REST API for uploads via HTTP POST to `/store` endpoint
-- Query endpoint: `http://localhost:7878/query`
-- Faster and more lightweight than Blazegraph
-- Docker container support with optional file copying
+**Neo4j** — Graph DB with the n10s RDF plugin. `configure()` must be called
+once to set up n10s. Uploads use `n10s.rdf.import.fetch`. Optional
+`container="<name>"` constructor arg copies files into the Docker container
+before import. URL: `neo4j://localhost:7687`.
 
-**Neo4j**: Graph database with n10s RDF plugin
-- Requires n10s configuration: `configure()` must be called before first upload
-- Uses `n10s.rdf.import.fetch()` for RDF imports
-- Supports docker container file transfers for imports
-- Connection URL format: `neo4j://localhost:7687`
+**Oxigraph** — Lightweight SPARQL 1.1 triplestore. REST API via HTTP POST
+to `/store`. Optional container arg works like Neo4j's. Handles both
+`http://host:port` and `http://host:port/query` forms in `CIMG_URL`.
 
-**MySQL**: Relational database (less common for CIM, mainly for structured queries)
-
-**GraphDB**: RDF triplestore (connection implemented but uploader/downloader may be incomplete)
+**Neptune** — AWS managed SPARQL. Currently works only against
+IAM-disabled clusters; AWS SigV4 and S3 bulk load are planned (see
+`design/TODO.md`).
 
 ## Common Operations
 
-### Upload CIM file to Blazegraph
+### Upload a file
+
 ```python
 from cimloader.uploaders import BlazegraphUploader
 
-loader = BlazegraphUploader()  # Uses env vars from cim-graph
+loader = BlazegraphUploader()
 loader.upload_from_file(filepath='./models', filename='model.xml')
+loader.upload_from_file(filepath='./models', filename='model.ttl')
 ```
 
-### Upload CIM file to Neo4j
+Format is auto-detected. Unknown extensions raise `ValueError`.
+
+### Migrate between databases
+
 ```python
+from cimgraph.databases import BlazegraphConnection
+from cimgraph.models import FeederModel
 from cimloader.uploaders import Neo4jUploader
+import cimgraph.data_profile.rc4_2021 as cim
 
-# Optional: container name for docker cp (e.g., 'neo4j_cim_loader')
-loader = Neo4jUploader(container='neo4j_cim_loader')
-loader.upload_from_file(filepath='./models', filename='model.xml')
+source = FeederModel(
+    container=cim.Feeder(mRID='feeder-123'),
+    connection=BlazegraphConnection(),
+)
+target = Neo4jUploader(container='neo4j_cim_loader')
+target.configure()
+target.upload_from_graphmodel(source.graph)
 ```
 
-### Upload CIM file to Oxigraph
-```python
-from cimloader.uploaders import OxigraphUploader
+### Run a SPARQL query
 
-# Direct upload (Oxigraph accessible from host)
-loader = OxigraphUploader()
-loader.upload_from_file(filepath='./models', filename='model.xml')
-
-# Upload via Docker container
-loader = OxigraphUploader(container='oxigraph_cim_loader')
-loader.upload_from_file(filepath='./models', filename='model.xml')
-```
-
-**Note:** All uploaders now use the consistent API signature: `upload_from_file(filepath, filename)`
-
-### Query a database
 ```python
 from cimloader.databases import BlazegraphConnection
-
 conn = BlazegraphConnection()
 result = conn.execute("SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10")
 ```
 
-## Module Structure
+## Pointers
 
-- `cimloader/databases/` - Database connection interfaces (Blazegraph, Neo4j, MySQL)
-- `cimloader/uploaders/` - Upload implementations for each database
-- `cimloader/downloaders/` - Download implementations for each database
-- `cimloader/batch_handlers/` - Multi-step ETL workflows
-- `cimloader/serializations/` - Format conversion utilities (encoders, translators)
+- Full uploader API reference: `design/UPLOADER_API.md`
+- Breaking changes history: `design/MIGRATION.md`
+- Coding style: `design/STYLE_GUIDE.md`
+- Planned future work: `design/TODO.md`
+- Neptune-specific setup: `docs/NEPTUNE.md`
+- Reference examples: `examples/migrate_database.py`, `examples/neptune_example.py`

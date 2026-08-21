@@ -18,6 +18,7 @@ from pathlib import Path
 
 from cimloader.databases import Neo4jConnection
 from cimloader.uploaders import Neo4jUploader
+from conftest import IEEE13_ASSETS_URL, IEEE13_URL
 
 
 # =============================================================================
@@ -162,6 +163,56 @@ class TestNeo4jUpload:
 
 
 # =============================================================================
+# URL Upload Tests
+# =============================================================================
+
+@pytest.mark.integration
+@pytest.mark.neo4j
+@pytest.mark.slow
+class TestNeo4jUploadFromURL:
+    """Test uploading CIM models fetched directly from a raw GitHub URL.
+
+    Neo4j's n10s plugin fetches the URL itself, so the uploader just
+    hands the URL and detected format to `n10s.rdf.import.fetch`.
+    """
+
+    def test_upload_from_url_ieee13(
+        self, neo4j_uploader, neo4j_connection, raw_github_reachable
+    ):
+        """Import IEEE13.xml from raw GitHub via n10s fetch."""
+        neo4j_connection.drop_all()
+        neo4j_connection.configure()
+
+        neo4j_uploader.upload_from_url(IEEE13_URL)
+
+        records, _, _ = neo4j_connection.execute(
+            "MATCH (n:Resource) RETURN count(n) AS count"
+        )
+        assert records[0]['count'] > 0, "Should have Resource nodes from n10s import"
+
+        # Spot-check that a node from the expected CIM namespace actually landed.
+        records, _, _ = neo4j_connection.execute(
+            'MATCH (n:Resource) WHERE n.uri STARTS WITH "http://iec.ch/TC57/CIM100#" '
+            'RETURN count(n) AS count'
+        )
+        assert records[0]['count'] > 0, "Should have CIM100-namespaced Resource nodes"
+
+    def test_upload_from_url_ieee13_assets(
+        self, neo4j_uploader, neo4j_connection, raw_github_reachable
+    ):
+        """Import IEEE13_Assets.xml from raw GitHub via n10s fetch."""
+        neo4j_connection.drop_all()
+        neo4j_connection.configure()
+
+        neo4j_uploader.upload_from_url(IEEE13_ASSETS_URL)
+
+        records, _, _ = neo4j_connection.execute(
+            "MATCH (n:Resource) RETURN count(n) AS count"
+        )
+        assert records[0]['count'] > 0
+
+
+# =============================================================================
 # Query Tests
 # =============================================================================
 
@@ -253,8 +304,10 @@ class TestNeo4jConfiguration:
         neo4j_connection.drop_all()
         neo4j_connection.configure()
 
-        # Should be able to query
-        query = "MATCH (n) RETURN count(n) AS count"
+        # configure() creates an n10s _GraphConfig node, so count all nodes
+        # would be 1 here. Assert on :Resource -- the label n10s gives imported
+        # RDF -- which is what drop_all() is meant to clear.
+        query = "MATCH (n:Resource) RETURN count(n) AS count"
         records, _, _ = neo4j_connection.execute(query)
         assert records[0]['count'] == 0
 

@@ -18,7 +18,12 @@ from pathlib import Path
 
 from cimloader.databases import OxigraphConnection
 from cimloader.uploaders import OxigraphUploader
-from conftest import count_triples, verify_cim_objects
+from conftest import (
+    IEEE13_ASSETS_URL,
+    IEEE13_URL,
+    count_triples,
+    verify_cim_objects,
+)
 
 
 # =============================================================================
@@ -103,18 +108,6 @@ class TestOxigraphDirectUpload:
         final_count = count_triples(oxigraph_connection)
         assert final_count > 1000, "IEEE 13 2021 model should have substantial data"
 
-    def test_upload_from_xml(self, oxigraph_uploader, oxigraph_connection, test_model_path):
-        """Test upload_from_xml method."""
-        oxigraph_connection.drop_all()
-
-        # Upload using full path
-        filepath = str(test_model_path / "ieee13_seto.xml")
-        oxigraph_uploader.upload_from_xml(filename=filepath)
-
-        # Verify upload
-        final_count = count_triples(oxigraph_connection)
-        assert final_count > 1000, "Should have uploaded data"
-
     def test_upload_multiple_files(self, oxigraph_uploader, oxigraph_connection, test_model_path):
         """Test uploading multiple files to the same store."""
         oxigraph_connection.drop_all()
@@ -154,81 +147,90 @@ class TestOxigraphDirectUpload:
 
 
 # =============================================================================
-# Upload Tests - Container Mode
+# URL Upload Tests
 # =============================================================================
 
 @pytest.mark.integration
 @pytest.mark.oxigraph
-@pytest.mark.requires_docker
-class TestOxigraphContainerUpload:
-    """Test Oxigraph upload via Docker container."""
+class TestOxigraphUploadFromURL:
+    """Test uploading CIM models fetched directly from a raw GitHub URL."""
 
-    def test_upload_via_container(self, oxigraph_connection, test_model_path):
-        """Test uploading via Docker container using docker cp."""
-        from cimloader.uploaders import OxigraphUploader
+    def test_upload_from_url_ieee13(
+        self, oxigraph_uploader, oxigraph_connection, raw_github_reachable
+    ):
+        """Download IEEE13.xml from raw GitHub and verify it loaded."""
+        oxigraph_connection.drop_all()
+        assert count_triples(oxigraph_connection) == 0
 
-        # Create uploader with container name
-        uploader = OxigraphUploader(container='oxigraph_cim_loader')
+        oxigraph_uploader.upload_from_url(IEEE13_URL)
 
-        # Clear store
+        assert count_triples(oxigraph_connection) > 1000
+        cim_counts = verify_cim_objects(oxigraph_connection)
+        assert cim_counts['feeders'] > 0, "Should have at least one Feeder"
+        assert cim_counts['lines'] > 0, "Should have ACLineSegments"
+
+    def test_upload_from_url_ieee13_assets(
+        self, oxigraph_uploader, oxigraph_connection, raw_github_reachable
+    ):
+        """Download IEEE13_Assets.xml from raw GitHub and verify it loaded."""
         oxigraph_connection.drop_all()
 
-        # Upload file via container
-        uploader.upload_from_file(
-            filepath=str(test_model_path),
-            filename="ieee13_seto.xml"
-        )
+        oxigraph_uploader.upload_from_url(IEEE13_ASSETS_URL)
 
-        # Verify upload
-        final_count = count_triples(oxigraph_connection)
-        assert final_count > 1000, "Should have uploaded data via container"
-
-        # Verify CIM structure
-        cim_counts = verify_cim_objects(oxigraph_connection)
-        assert sum(cim_counts.values()) > 0, "Should have CIM objects"
+        assert count_triples(oxigraph_connection) > 1000
 
 
 # =============================================================================
 # Format Detection Tests
 # =============================================================================
 
-@pytest.mark.integration
-@pytest.mark.oxigraph
-class TestOxigraphFormatDetection:
-    """Test automatic RDF format detection."""
+class TestFormatDetection:
+    """Test the shared `cimloader._formats` helpers.
 
-    def test_format_detection_xml(self, oxigraph_uploader):
-        """Test XML format detection."""
-        assert oxigraph_uploader._get_content_type('test.xml') == 'application/rdf+xml'
-        assert oxigraph_uploader._get_content_type('test.rdf') == 'application/rdf+xml'
+    These live here historically — they aren't Oxigraph-specific. They exercise
+    the single source of truth used by every uploader.
+    """
 
-    def test_format_detection_turtle(self, oxigraph_uploader):
-        """Test Turtle format detection."""
-        assert oxigraph_uploader._get_content_type('test.ttl') == 'text/turtle'
-        assert oxigraph_uploader._get_content_type('test.turtle') == 'text/turtle'
+    def test_format_detection_xml(self):
+        from cimloader._formats import content_type_from_filename
+        assert content_type_from_filename('test.xml') == 'application/rdf+xml'
+        assert content_type_from_filename('test.rdf') == 'application/rdf+xml'
 
-    def test_format_detection_ntriples(self, oxigraph_uploader):
-        """Test N-Triples format detection."""
-        assert oxigraph_uploader._get_content_type('test.nt') == 'application/n-triples'
-        assert oxigraph_uploader._get_content_type('test.ntriples') == 'application/n-triples'
+    def test_format_detection_turtle(self):
+        from cimloader._formats import content_type_from_filename
+        assert content_type_from_filename('test.ttl') == 'text/turtle'
+        assert content_type_from_filename('test.turtle') == 'text/turtle'
 
-    def test_format_detection_nquads(self, oxigraph_uploader):
-        """Test N-Quads format detection."""
-        assert oxigraph_uploader._get_content_type('test.nq') == 'application/n-quads'
-        assert oxigraph_uploader._get_content_type('test.nquads') == 'application/n-quads'
+    def test_format_detection_ntriples(self):
+        from cimloader._formats import content_type_from_filename
+        assert content_type_from_filename('test.nt') == 'application/n-triples'
+        assert content_type_from_filename('test.ntriples') == 'application/n-triples'
 
-    def test_format_detection_case_insensitive(self, oxigraph_uploader):
-        """Test that format detection is case-insensitive."""
-        assert oxigraph_uploader._get_content_type('TEST.XML') == 'application/rdf+xml'
-        assert oxigraph_uploader._get_content_type('Test.TTL') == 'text/turtle'
+    def test_format_detection_nquads(self):
+        from cimloader._formats import content_type_from_filename
+        assert content_type_from_filename('test.nq') == 'application/n-quads'
+        assert content_type_from_filename('test.nquads') == 'application/n-quads'
 
-    def test_format_detection_unsupported(self, oxigraph_uploader):
-        """Test that unsupported formats raise ValueError."""
-        with pytest.raises(ValueError, match="Unsupported file format"):
-            oxigraph_uploader._get_content_type('test.json')
+    def test_format_detection_case_insensitive(self):
+        from cimloader._formats import content_type_from_filename
+        assert content_type_from_filename('TEST.XML') == 'application/rdf+xml'
+        assert content_type_from_filename('Test.TTL') == 'text/turtle'
 
-        with pytest.raises(ValueError, match="Unsupported file format"):
-            oxigraph_uploader._get_content_type('test.txt')
+    def test_format_detection_unsupported(self):
+        from cimloader._formats import content_type_from_filename
+        with pytest.raises(ValueError, match="Unsupported RDF format"):
+            content_type_from_filename('test.json')
+        with pytest.raises(ValueError, match="Unsupported RDF format"):
+            content_type_from_filename('test.txt')
+
+    def test_format_detection_from_url_strips_query_and_fragment(self):
+        from cimloader._formats import content_type_from_url
+        assert content_type_from_url(
+            'https://example.com/a/b/feeder.xml?ref=main'
+        ) == 'application/rdf+xml'
+        assert content_type_from_url(
+            'https://example.com/a/b/feeder.ttl#section'
+        ) == 'text/turtle'
 
 
 # =============================================================================
@@ -335,12 +337,12 @@ class TestOxigraphQuery:
 class TestOxigraphErrorHandling:
     """Test error handling in Oxigraph operations."""
 
-    def test_upload_nonexistent_file(self, oxigraph_uploader):
-        """Test uploading a file that doesn't exist."""
-        with pytest.raises(Exception):
+    def test_upload_unknown_extension(self, oxigraph_uploader):
+        """Uploading a file whose extension isn't a known RDF format raises."""
+        with pytest.raises(ValueError, match="Unsupported RDF format"):
             oxigraph_uploader.upload_from_file(
                 filepath="/nonexistent",
-                filename="nonexistent.xml"
+                filename="nonexistent.xyz",
             )
 
     def test_query_invalid_sparql(self, oxigraph_connection):

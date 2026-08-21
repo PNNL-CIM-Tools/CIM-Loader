@@ -1,0 +1,52 @@
+# Sample instance conforming to model_manifest.linkml.yaml.
+# The real catalog lives in Powergrid-Models; this is the worked example.
+# Checksums/URLs are placeholders until the Zenodo records are minted.
+#
+# Profile types follow the 61970-552 instance (cim:GridDataset.profileType):
+#   EQ  — Equipment
+#   TP  — Topology
+#   OP  — Operations
+#   SSH — Steady-State Hypothesis
+#   SV  — State Variables
+#   combined — all profiles in one file (our default for test models)
+
+- id: ieee13
+  family: ieee-test-feeders
+  version: "2024.1"
+  golden_format: cim_rdf
+  golden_direction: native_is_golden
+  feeder_mrid: "_49AD8E07-3BF9-A4E2-CB8F-C3722F837B62"
+  doi: "10.5281/zenodo.XXXXXX"
+  parts:
+    - id: _49ad8e07_3bf9_a4e2_cb8f_c3722f837b62
+      profile: combined
+      content_type: application/rdf+xml
+      filename: ieee13.cimx
+      checksum: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      sources:
+        - https://zenodo.org/records/XXXXXX/files/ieee13.cimx?download=1
+
+# Multi-part example: EQ + TP split, matching the 61970-552 instance structure.
+# Each part has its own dcat:Distribution with a distinct profileType and spdx:checksum.
+- id: microgrid-bd
+  family: entso-e-test-configs
+  version: "2014.1"
+  golden_format: cim_rdf
+  golden_direction: cim_is_golden
+  feeder_mrid: "_7C390692-2DB9-4FAA-8AFB-1A67CE40C846"
+  doi: "10.5281/zenodo.XXXXXX"
+  parts:
+    - id: _6d019cf0_cb92_43a2_a721_8a5eafccdd1b_eq
+      profile: EQ
+      content_type: application/rdf+xml
+      filename: MicroGridTestConfiguration_EQ_BD.xml
+      checksum: "sha256:C6BF1ED92784195A84C4B3859C9C79EC23CC1ABE2CC216FC9861EB2123F7A187"
+      sources:
+        - https://zenodo.org/records/XXXXXX/files/MicroGridTestConfiguration_EQ_BD.xml?download=1
+    - id: _6d019cf0_cb92_43a2_a721_8a5eafccdd1b_tp
+      profile: TP
+      content_type: application/rdf+xml
+      filename: MicroGridTestConfiguration_TP_BD.xml
+      checksum: "sha256:AB365A0CA1D2722FBC5A731573BD44090BC3D34FF993A5625AE218F3DAC5C843"
+      sources:
+        - https://zenodo.org/records/XXXXXX/files/MicroGridTestConfiguration_TP_BD.xml?download=1

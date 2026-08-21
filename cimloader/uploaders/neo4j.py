@@ -1,159 +1,128 @@
-import logging
-import subprocess
+from __future__ import annotations
 
-from cimgraph.databases import get_cim_profile, get_database, get_iec61970_301, get_namespace, get_password, get_url, get_username
-from cimloader.databases import ConnectionInterface, QueryResponse
-from cimloader.databases._config_utils import clear_cim_config_cache
+import logging
+import os
+import subprocess
+import tempfile
+
+import requests
+
+from cimloader._base_iri import DEFAULT_BASE_IRI, prepare_rdf_bytes
+from cimloader._formats import content_type_from_filename, content_type_from_url
 from cimloader.databases.neo4j import Neo4jConnection
 
 _log = logging.getLogger(__name__)
 
+# n10s uses its own format name strings, not MIME content types.
+_CONTENT_TYPE_TO_N10S = {
+    'application/rdf+xml':    'RDF/XML',
+    'text/turtle':            'Turtle',
+    'application/n-triples':  'N-Triples',
+    'application/n-quads':    'N-Quads',
+    'application/ld+json':    'JSON-LD',
+    'application/trig':       'TriG',
+}
+
+
 class Neo4jUploader(Neo4jConnection):
-    def __init__(self, container:str = None) -> None:
-        # Clear cached env variables to pick up any configuration changes
-        clear_cim_config_cache()
-
-        # Retrieve configuration from environment
-        self.cim_profile, self.cim = get_cim_profile()
-        self.namespace = get_namespace()
-        self.url = get_url()
-        self.username = get_username()
-        self.password = get_password()
-        self.database = get_database()
-        self.iec61970_301 = get_iec61970_301()
+    def __init__(
+        self,
+        container: str | None = None,
+        base_iri: str = DEFAULT_BASE_IRI,
+    ) -> None:
+        super().__init__()
         self.container = container
-        self.driver = None
-        self.connect()
-
+        self.base_iri = base_iri
+        # No connect() here: execute() connects lazily, so constructing an
+        # uploader never does I/O. Matches the other four uploaders.
 
     def upload_from_file(self, filepath: str, filename: str):
-        """Upload RDF file from filesystem to Neo4j.
+        """Upload an RDF file to Neo4j via the n10s plugin.
 
-        Automatically detects format based on file extension.
-
-        Args:
-            filepath: Directory containing the file
-            filename: Name of the file to upload
-
-        Returns:
-            Neo4j query result records
-
-        Raises:
-            ValueError: If file extension is not recognized
+        Format is auto-detected from the file extension. If a `container`
+        was given at construction time the (rewritten) file is `docker
+        cp`'d into the Neo4j container first; otherwise the path must
+        already be reachable from the Neo4j process. RDF/XML files get
+        `xml:base=<self.base_iri>` injected when they don't already
+        declare one.
         """
-        format = self._get_n10s_format(filename)
-        return self._upload(filepath, filename, format)
+        content_type = content_type_from_filename(filename)
+        with open(f"{filepath}/{filename}", "rb") as f:
+            data = prepare_rdf_bytes(f.read(), content_type, self.base_iri)
+        return self._upload_bytes(data, filename, content_type)
 
-    def upload_from_xml(self, filepath: str, filename: str):
-        """Upload RDF/XML file to Neo4j.
+    def upload_from_url(self, url: str):
+        """Fetch an RDF file from a URL and import it via the n10s plugin.
 
-        Args:
-            filepath: Directory containing the file
-            filename: Name of the XML file to upload
-
-        Returns:
-            Neo4j query result records
+        We download + rewrite the bytes in-process so Neo4j sees the same
+        base-IRI-normalized content every other uploader produces. The
+        rewritten bytes are staged into Neo4j's import directory and
+        n10s.rdf.import.fetch reads them with a file:// URL.
         """
-        return self._upload(filepath, filename, 'RDF/XML')
+        content_type = content_type_from_url(url)
+        filename = os.path.basename(url.split('?', 1)[0].split('#', 1)[0])
+        _log.info("Fetching %s for import into Neo4j", url)
+        resp = requests.get(url)
+        resp.raise_for_status()
+        data = prepare_rdf_bytes(resp.content, content_type, self.base_iri)
+        return self._upload_bytes(data, filename, content_type)
 
-    def upload_from_ttl(self, filepath: str, filename: str):
-        """Upload Turtle (TTL) file to Neo4j.
+    def upload_from_graphmodel(self, graph_dict: dict) -> None:
+        """Upload a CIMantic Graphs graph dict to Neo4j via the n10s plugin.
 
-        Args:
-            filepath: Directory containing the file
-            filename: Name of the TTL file to upload
+        Accepts the ``graph`` of any GraphModel subclass (FeederModel,
+        BusBranchModel, NodeBreakerModel) -- only the objects matter.
 
-        Returns:
-            Neo4j query result records
+        Objects are serialized to RDF/XML and ingested with
+        n10s.rdf.import.inline, so nothing needs to be reachable from the
+        Neo4j server's filesystem. Requires configure() to have been run.
         """
-        return self._upload(filepath, filename, 'Turtle')
+        # cimgraph's Neo4jConnection owns the object-graph writeback: it holds
+        # the RDF serialization that depends on the CIM data profile. This
+        # uploader owns bulk file/URL ingest. Delegating keeps one
+        # implementation instead of two that must stay in sync.
+        from cimgraph.databases import Neo4jConnection as CimgraphNeo4jConnection
 
-    def upload_from_ntriples(self, filepath: str, filename: str):
-        """Upload N-Triples file to Neo4j.
+        _log.info("Uploading graph with %d object types to Neo4j", len(graph_dict))
+        CimgraphNeo4jConnection().upload(graph_dict)
 
-        Args:
-            filepath: Directory containing the file
-            filename: Name of the N-Triples file to upload
+    def _upload_bytes(self, data: bytes, filename: str, content_type: str):
+        """Stage `data` somewhere n10s can read and call fetch()."""
+        n10s_format = _CONTENT_TYPE_TO_N10S[content_type]
 
-        Returns:
-            Neo4j query result records
-        """
-        return self._upload(filepath, filename, 'N-Triples')
+        # Write to a temp file on the host, then either docker-cp it into
+        # the container's import dir or (if no container was given) hand
+        # n10s the host path directly.
+        with tempfile.NamedTemporaryFile(
+            prefix="cimloader-", suffix=f"-{filename}", delete=False
+        ) as tmp:
+            tmp.write(data)
+            host_path = tmp.name
 
-    def upload_from_jsonld(self, filepath: str, filename: str):
-        """Upload JSON-LD file to Neo4j.
-
-        Args:
-            filepath: Directory containing the file
-            filename: Name of the JSON-LD file to upload
-
-        Returns:
-            Neo4j query result records
-        """
-        return self._upload(filepath, filename, 'JSON-LD')
-
-    def upload_from_url(self, url):
-        if '.xml' in url or '.XML' in url:
-            format = 'RDF/XML'
-        elif '.ttl' in url:
-            pass
-        records=self.execute(f'''call n10s.rdf.import.fetch("{url}", "{format}"); ''') 
-        return records
-
-    def upload_from_rdflib(self, rdflib_graph):
-        """Upload from RDFLib graph - not yet implemented."""
-        raise NotImplementedError("upload_from_rdflib not yet implemented for Neo4j")
-
-    def upload_from_cimgraph(self):
-        """Upload from CIMantic Graphs GraphModel - not yet implemented."""
-        raise NotImplementedError("upload_from_cimgraph not yet implemented for Neo4j")
-
-    def _upload(self, filepath: str, filename: str, format: str):
-        """Internal method to upload file with specific n10s format.
-
-        Args:
-            filepath: Directory containing the file
-            filename: Name of the file to upload
-            format: n10s format string (e.g., 'RDF/XML', 'Turtle', 'N-Triples', 'JSON-LD')
-
-        Returns:
-            Neo4j query result records
-        """
-        if self.container:
-            subprocess.call(["docker", "cp", f"{filepath}/{filename}", f"{self.container}:/var/lib/neo4j/import/{filename}"])
-            records = self.execute(f"""call n10s.rdf.import.fetch("file:///var/lib/neo4j/import/{filename}", "{format}");""")
-        else:
-            records = self.execute(f"""call n10s.rdf.import.fetch("file://{filepath}/{filename}", "{format}");""")
-        return records
-
-    def _get_n10s_format(self, filename: str) -> str:
-        """Determine n10s format string from file extension.
-
-        Args:
-            filename: Name of the file
-
-        Returns:
-            n10s format string
-
-        Raises:
-            ValueError: If file extension is not recognized
-        """
-        filename_lower = filename.lower()
-
-        if filename_lower.endswith('.xml') or filename_lower.endswith('.rdf'):
-            return 'RDF/XML'
-        elif filename_lower.endswith('.ttl') or filename_lower.endswith('.turtle'):
-            return 'Turtle'
-        elif filename_lower.endswith('.nt') or filename_lower.endswith('.ntriples'):
-            return 'N-Triples'
-        elif filename_lower.endswith('.jsonld') or filename_lower.endswith('.json-ld'):
-            return 'JSON-LD'
-        elif filename_lower.endswith('.nq') or filename_lower.endswith('.nquads'):
-            return 'N-Quads'
-        elif filename_lower.endswith('.trig'):
-            return 'TriG'
-        else:
-            raise ValueError(
-                f"Unsupported file format: {filename}. "
-                "Supported formats: .xml, .rdf, .ttl, .turtle, .nt, .ntriples, .jsonld, .nq, .nquads, .trig"
+        try:
+            if self.container:
+                container_path = f"/var/lib/neo4j/import/{filename}"
+                subprocess.check_call([
+                    "docker", "cp",
+                    host_path,
+                    f"{self.container}:{container_path}",
+                ])
+                # docker cp preserves host uid/mode, which are unreadable to
+                # the container's neo4j user. Make it world-readable so n10s
+                # can open it.
+                subprocess.check_call([
+                    "docker", "exec", self.container,
+                    "chmod", "644", container_path,
+                ])
+                fetch_url = f"file://{container_path}"
+            else:
+                fetch_url = f"file://{host_path}"
+            query = (
+                f'call n10s.rdf.import.fetch("{fetch_url}", "{n10s_format}");'
             )
+            return self.execute(query)
+        finally:
+            try:
+                os.unlink(host_path)
+            except OSError:
+                pass

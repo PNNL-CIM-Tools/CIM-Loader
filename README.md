@@ -15,7 +15,9 @@ pip install -e CIM-Loader
 
 ## Usage
 
-To use CIM-Loader for bulk upload and download, set environment variables for connection configuration and then invoke the associated upload / download method.
+CIM-Loader provides a consistent API for uploading CIM data to various databases. All uploaders support multiple RDF formats and can transfer data between databases using CIMantic Graphs.
+
+### Basic File Upload
 
 All uploaders use a consistent API: `upload_from_file(filepath, filename)`
 
@@ -57,15 +59,60 @@ oxigraph = OxigraphUploader()
 oxigraph.upload_from_file(filepath='./models', filename='grid.xml')
 ```
 
+### Database Migration
+
+Transfer data between databases using CIMantic Graphs:
+
+```python
+from cimgraph.models import FeederModel
+from cimgraph.databases import BlazegraphConnection
+from cimloader.uploaders import Neo4jUploader
+import cimgraph.data_profile.rc4_2021 as cim
+
+# Load from Blazegraph
+os.environ['CIMG_URL'] = 'http://localhost:8889/bigdata/namespace/kb/sparql'
+blazegraph = BlazegraphConnection()
+feeder = cim.Feeder(mRID='feeder-123')
+source = FeederModel(container=feeder, connection=blazegraph)
+
+# Upload to Neo4j
+os.environ['CIMG_URL'] = 'neo4j://localhost:7687'
+neo4j = Neo4jUploader()
+neo4j.upload_from_graphmodel(source.graph)
+```
+
+See the `examples/` directory for complete migration and merging examples.
+
+### Format Support
+
+Format is auto-detected from the file extension. Pass any of the supported
+extensions to `upload_from_file`:
+
+- **RDF/XML** — `.xml`, `.rdf`
+- **Turtle** — `.ttl`, `.turtle`
+- **N-Triples** — `.nt`, `.ntriples`
+- **N-Quads** — `.nq`, `.nquads`
+- **JSON-LD** — `.jsonld`, `.json-ld` (Blazegraph, Neo4j)
+- **TriG** — `.trig` (Blazegraph, Neo4j)
+
+```python
+uploader.upload_from_file(filepath='./models', filename='grid.xml')
+uploader.upload_from_file(filepath='./models', filename='grid.ttl')
+```
+
+See `design/UPLOADER_API.md` for full API details and
+`design/STYLE_GUIDE.md` for coding conventions.
+
 
 ## Databases Supported
-Databases currently supported:
+Currently supported:
 * Blazegraph
-* Neo4J
+* Neo4j
 * Oxigraph
-* MySQL
+* AWS Neptune (experimental — see `docs/NEPTUNE.md`)
 
-Planned support:
+Planned (see `design/TODO.md`):
+* Apache AGE (PostgreSQL graph extension — replacing the legacy MySQL connector)
 * GraphDB
 
 Support may be added in the future for:
@@ -94,7 +141,6 @@ This starts all database services:
 - Blazegraph on port 8889
 - Neo4j on ports 7474 (HTTP) and 7687 (Bolt)
 - Oxigraph on port 7878
-- MySQL on port 3306
 
 ### Running Tests
 

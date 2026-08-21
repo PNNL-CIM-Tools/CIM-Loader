@@ -27,6 +27,16 @@ TEST_MODELS_DIR = TEST_DIR / "test_models"
 IEEE13_SETO_FILE = "ieee13_seto.xml"
 IEEE13_2021_FILE = "ieee13_2021.xml"
 
+# Raw-GitHub URLs used by upload_from_url integration tests. These come from
+# GRIDAPPSD/Powergrid-Models so the tests don't rely on CIM-Loader having the
+# same files at the same path on its own default branch.
+_RAW_BASE = (
+    "https://raw.githubusercontent.com/GRIDAPPSD/Powergrid-Models"
+    "/develop/models/feeders/CIM/XML"
+)
+IEEE13_URL = f"{_RAW_BASE}/IEEE13.xml"
+IEEE13_ASSETS_URL = f"{_RAW_BASE}/IEEE13_Assets.xml"
+
 
 # =============================================================================
 # Environment Configuration Fixtures
@@ -60,17 +70,6 @@ def neo4j_env():
     os.environ['CIMG_USERNAME'] = 'neo4j'
     os.environ['CIMG_PASSWORD'] = 'test1234'
     os.environ['CIMG_DATABASE'] = 'neo4j'
-    yield
-
-
-@pytest.fixture
-def mysql_env():
-    """Configure environment for MySQL tests."""
-    os.environ['CIMG_HOST'] = 'localhost'
-    os.environ['CIMG_PORT'] = '3306'
-    os.environ['CIMG_USERNAME'] = 'root'
-    os.environ['CIMG_PASSWORD'] = 'password'
-    os.environ['CIMG_DATABASE'] = 'rc4_2021'
     yield
 
 
@@ -199,35 +198,6 @@ def neo4j_connection(neo4j_env, docker_compose_check):
 
 
 @pytest.fixture
-def mysql_connection(mysql_env, docker_compose_check):
-    """Provide a MySQL connection for tests."""
-    from cimloader.databases import MySQLConnection
-
-    if not is_container_running('mysql_json_cim_loader'):
-        pytest.skip("MySQL container not running. Start with: docker-compose up -d mysql")
-
-    if not wait_for_service('http://localhost:3306'):
-        # MySQL doesn't have HTTP, so this will fail - just wait a moment
-        time.sleep(2)
-
-    connection = MySQLConnection()
-
-    # Setup schema
-    try:
-        connection.configure()
-    except Exception as e:
-        pytest.skip(f"Cannot configure MySQL: {e}")
-
-    yield connection
-
-    # Cleanup
-    try:
-        connection.disconnect()
-    except:
-        pass
-
-
-@pytest.fixture
 def oxigraph_connection(oxigraph_env, docker_compose_check):
     """Provide an Oxigraph connection for tests."""
     from cimloader.databases import OxigraphConnection
@@ -295,6 +265,18 @@ def oxigraph_uploader(oxigraph_env, docker_compose_check):
 # =============================================================================
 # Test Data Fixtures
 # =============================================================================
+
+@pytest.fixture(scope="session")
+def raw_github_reachable() -> bool:
+    """Skip URL tests if raw.githubusercontent.com can't be reached."""
+    try:
+        r = requests.head(IEEE13_URL, timeout=5, allow_redirects=True)
+        if r.status_code != 200:
+            pytest.skip(f"Test model URL returned {r.status_code}: {IEEE13_URL}")
+    except requests.RequestException as e:
+        pytest.skip(f"raw.githubusercontent.com unreachable: {e}")
+    return True
+
 
 @pytest.fixture
 def test_model_path() -> Path:
