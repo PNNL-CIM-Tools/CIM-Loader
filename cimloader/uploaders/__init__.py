@@ -3,6 +3,7 @@ from cimloader.uploaders.neo4j import Neo4jUploader
 from cimloader.uploaders.oxigraph import OxigraphUploader
 from cimloader.uploaders.neptune import NeptuneUploader
 from cimloader.uploaders.graphdb import GraphDBUploader
+from cimloader.uploaders.mysql import MySQLUploader
 
 __all__ = [
     "BlazegraphUploader",
@@ -10,4 +11,5 @@ __all__ = [
     "OxigraphUploader",
     "NeptuneUploader",
     "GraphDBUploader",
+    "MySQLUploader",
 ]

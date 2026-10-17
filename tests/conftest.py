@@ -26,6 +26,9 @@ TEST_DIR = Path(__file__).parent
 TEST_MODELS_DIR = TEST_DIR / "test_models"
 IEEE13_SETO_FILE = "ieee13_seto.xml"
 IEEE13_2021_FILE = "ieee13_2021.xml"
+# CIMTool-generated ANSI SQL schemas used by the MySQL tests.
+TIER_ONE_SQL_FILE = TEST_MODELS_DIR / "TierOneConnectivicty.sql"
+TIER_FIVE_SQL_FILE = TEST_MODELS_DIR / "TierFiveConnectivity.sql"
 
 # Raw-GitHub URLs used by upload_from_url integration tests. These come from
 # GRIDAPPSD/Powergrid-Models so the tests don't rely on CIM-Loader having the
@@ -77,6 +80,17 @@ def neo4j_env():
 def oxigraph_env():
     """Configure environment for Oxigraph tests."""
     os.environ['CIMG_URL'] = 'http://localhost:7878/query'
+    yield
+
+
+@pytest.fixture
+def mysql_env():
+    """Configure environment for MySQL tests."""
+    os.environ['CIMG_HOST'] = '127.0.0.1'
+    os.environ['CIMG_PORT'] = '3306'
+    os.environ['CIMG_USERNAME'] = 'root'
+    os.environ['CIMG_PASSWORD'] = 'password'
+    os.environ['CIMG_DATABASE'] = 'cimloader_test'
     yield
 
 
@@ -260,6 +274,21 @@ def oxigraph_uploader(oxigraph_env, docker_compose_check):
         pytest.skip("Oxigraph container not running")
 
     return OxigraphUploader()
+
+
+@pytest.fixture
+def mysql_uploader(mysql_env, docker_compose_check):
+    """Provide a MySQL uploader on a freshly created Tier Five schema."""
+    from cimloader.uploaders import MySQLUploader
+
+    if not is_container_running('mysql_cim_loader'):
+        pytest.skip("MySQL container not running. Start with: docker-compose up -d mysql")
+
+    uploader = MySQLUploader()
+    uploader.drop_all()
+    uploader.create_schema(str(TIER_FIVE_SQL_FILE))
+    yield uploader
+    uploader.drop_all()
 
 
 # =============================================================================

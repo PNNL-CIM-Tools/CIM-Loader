@@ -2,11 +2,12 @@
 
 Tracked items that were deliberately left out of the cleanup pass.
 
-## MySQL → Apache AGE
+## Apache AGE
 
-`archive/mysql_legacy/` contains the previous MySQLConnection. It stores
-JSON-LD blobs in VARCHAR/JSON columns — fast but not a sound relational
-schema. Rewrite against **Apache AGE** (PostgreSQL graph extension) so CIM
+Relational MySQL support now lives in `cimloader/databases/mysql.py`,
+driven by CIMTool-generated SQL schemas. `archive/mysql_legacy/` (JSON-LD
+blobs in VARCHAR/JSON columns) is superseded. Separately, add a graph-native
+SQL target on **Apache AGE** (PostgreSQL graph extension) so CIM
 relationships map to real graph edges. New home: `cimloader/databases/age.py`
 and `cimloader/uploaders/age.py`.
 

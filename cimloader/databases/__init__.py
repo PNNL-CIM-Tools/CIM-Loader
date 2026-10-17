@@ -4,6 +4,7 @@ from cimloader.databases.neo4j import Neo4jConnection
 from cimloader.databases.oxigraph import OxigraphConnection
 from cimloader.databases.neptune import NeptuneConnection
 from cimloader.databases.graphdb import GraphDBConnection
+from cimloader.databases.mysql import MySQLConnection
 
 __all__ = [
     "ConnectionInterface",
@@ -13,4 +14,5 @@ __all__ = [
     "OxigraphConnection",
     "NeptuneConnection",
     "GraphDBConnection",
+    "MySQLConnection",
 ]

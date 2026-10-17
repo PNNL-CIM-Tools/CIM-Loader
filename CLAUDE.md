@@ -35,6 +35,7 @@ pytest tests/test_blazegraph.py -v
 pytest tests/test_neo4j.py -v
 pytest tests/test_oxigraph.py -v
 pytest tests/test_neptune.py -v
+pytest tests/test_mysql.py -v
 ```
 
 Test models live in `tests/test_models/`.
@@ -46,6 +47,7 @@ docker-compose up -d
 # - Blazegraph: http://localhost:8889
 # - Neo4j:      http://localhost:7474  (bolt://localhost:7687)
 # - Oxigraph:   http://localhost:7878
+# - MySQL:      localhost:3306 (root / password)
 ```
 
 ## Architecture
@@ -55,7 +57,7 @@ Layered:
 1. **`cimloader/databases/`** — Connection classes. All implement the
    `ConnectionInterface` ABC (`connect`, `disconnect`, `execute`). One file
    per database: `blazegraph.py`, `neo4j.py`, `oxigraph.py`, `neptune.py`,
-   `graphdb.py`.
+   `graphdb.py`, `mysql.py`.
    Base class lives in `_base.py`; shared cimgraph-cache-clearing helper in
    `_config_utils.py`.
 
@@ -110,6 +112,12 @@ before import. URL: `neo4j://localhost:7687`.
 **Oxigraph** — Lightweight SPARQL 1.1 triplestore. REST API via HTTP POST
 to `/store`. Optional container arg works like Neo4j's. Handles both
 `http://host:port` and `http://host:port/query` forms in `CIMG_URL`.
+
+**MySQL** — Relational, against UCAiug CIMTool ANSI-SQL schemas.
+`create_schema(sql_file)` must be called once before uploads. Uploads go
+through cimgraph objects (`upload_from_file` parses RDF/XML / JSON-LD with
+cimgraph first) and follow the schema's own inheritance FKs. Sessions use
+`ANSI_QUOTES`. Config via `CIMG_HOST/PORT/USERNAME/PASSWORD/DATABASE`.
 
 **Neptune** — AWS managed SPARQL. Currently works only against
 IAM-disabled clusters; AWS SigV4 and S3 bulk load are planned (see
